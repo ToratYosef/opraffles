@@ -12,6 +12,14 @@ setGlobalOptions({maxInstances: 10, region: "us-central1"});
 const ADMIN_CODE = process.env.ADMIN_CODE || "123";
 const DEFAULT_ALLOWED_ORIGINS = ["https://opraffles1.web.app"];
 const SPIN_RESERVATION_MINUTES = Number(process.env.SPIN_RESERVATION_MINUTES || 15);
+const CALLABLE_CORS = {
+	cors: [
+		"https://opraffles1.web.app",
+		"https://opraffles1.firebaseapp.com",
+		"http://localhost:5000",
+		"http://localhost:5173",
+	],
+};
 
 function getAllowedOrigins() {
 	const fromEnv = String(process.env.ALLOWED_ORIGINS || "")
@@ -243,7 +251,7 @@ function allocateSpinNumbers({totalSpots, assignedNumbersSet, quantity, assignme
 	return available.slice(0, quantity);
 }
 
-exports.adminCreateRaffle = onCall(async (request) => {
+exports.adminCreateRaffle = onCall(CALLABLE_CORS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const data = request.data || {};
@@ -308,7 +316,7 @@ exports.adminCreateRaffle = onCall(async (request) => {
 	return {raffleId: raffleRef.id};
 });
 
-exports.adminToggleRaffle = onCall(async (request) => {
+exports.adminToggleRaffle = onCall(CALLABLE_CORS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const raffleId = String(request.data && request.data.raffleId || "").trim();
@@ -325,7 +333,7 @@ exports.adminToggleRaffle = onCall(async (request) => {
 	return {success: true};
 });
 
-exports.adminGetDashboard = onCall(async (request) => {
+exports.adminGetDashboard = onCall(CALLABLE_CORS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const [rafflesSnap, ordersSnap, entriesSnap] = await Promise.all([
@@ -352,7 +360,7 @@ exports.adminGetDashboard = onCall(async (request) => {
 	};
 });
 
-exports.adminGenerateWheelData = onCall(async (request) => {
+exports.adminGenerateWheelData = onCall(CALLABLE_CORS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const raffleId = String(request.data && request.data.raffleId || "").trim();
@@ -394,7 +402,7 @@ exports.adminGenerateWheelData = onCall(async (request) => {
 	};
 });
 
-exports.createCheckoutSession = onCall(async (request) => {
+exports.createCheckoutSession = onCall(CALLABLE_CORS, async (request) => {
 	const data = request.data || {};
 	const raffleId = String(data.raffleId || "").trim();
 	const quantity = parseIntSafe(data.quantity);
@@ -713,7 +721,7 @@ exports.stripeWebhook = onRequest(async (req, res) => {
 	}
 });
 
-exports.createManualEntry = onCall(async (request) => {
+exports.createManualEntry = onCall(CALLABLE_CORS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const data = request.data || {};
@@ -795,7 +803,7 @@ exports.createManualEntry = onCall(async (request) => {
 	return {orderId: orderRef.id};
 });
 
-exports.getOrderBySession = onCall(async (request) => {
+exports.getOrderBySession = onCall(CALLABLE_CORS, async (request) => {
 	const sessionId = String(request.data && request.data.sessionId || "").trim();
 	if (!sessionId) {
 		throw new HttpsError("invalid-argument", "Missing session id.");
@@ -824,7 +832,7 @@ exports.getOrderBySession = onCall(async (request) => {
 	};
 });
 
-exports.exportRaffleCsv = onCall(async (request) => {
+exports.exportRaffleCsv = onCall(CALLABLE_CORS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const raffleId = String(request.data && request.data.raffleId || "").trim();
