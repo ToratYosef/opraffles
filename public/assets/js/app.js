@@ -66,7 +66,12 @@
 
       const banner = raffle.bannerImage || "https://images.unsplash.com/photo-1519750157634-b6d493a0f77c?auto=format&fit=crop&w=1200&q=80";
       const entryPrice = Number(raffle.entryPrice || 0);
-      const priceLabel = entryPrice > 0 ? RafflePlatform.formatCurrency(entryPrice * 100, "USD") + " / entry" : "See details";
+      let priceLabel = "See details";
+      if (raffle.type === "spin") {
+        priceLabel = "Spin raffle";
+      } else if (entryPrice > 0) {
+        priceLabel = RafflePlatform.formatCurrency(entryPrice * 100, "USD") + " / entry";
+      }
 
       card.innerHTML =
         '<div class="relative h-44 overflow-hidden">' +
