@@ -15,6 +15,9 @@
   const ticketsLeftCard = document.getElementById("ticketsLeftCard");
   const ticketsLeftValue = document.getElementById("ticketsLeftValue");
   const ticketsLeftDetail = document.getElementById("ticketsLeftDetail");
+  const spinScoreboard = document.getElementById("spinScoreboard");
+  const scoreDigits = document.getElementById("scoreDigits");
+  const scoreSubtext = document.getElementById("scoreSubtext");
   const priceCard = document.getElementById("priceCard");
   const spinInfo = document.getElementById("spinInfo");
   const spinSummary = document.getElementById("spinSummary");
@@ -32,8 +35,11 @@
   const cardElementWrap = document.getElementById("cardElementWrap");
   const estimateCard = document.getElementById("estimateCard");
   const spinRevealModal = document.getElementById("spinRevealModal");
-  const spinModalStatus = document.getElementById("spinModalStatus");
+  const spinModalTitle = document.getElementById("spinModalTitle");
+  const spinModalSubtitle = document.getElementById("spinModalSubtitle");
   const spinRevealNumber = document.getElementById("spinRevealNumber");
+  const spinPriceReveal = document.getElementById("spinPriceReveal");
+  const spinFinalPrice = document.getElementById("spinFinalPrice");
 
   const params = new URLSearchParams(window.location.search);
   const slug = String(params.get("slug") || "").trim().toLowerCase();
@@ -41,10 +47,19 @@
   let raffle = null;
   let stripe = null;
   let cardElement = null;
+  let flickerTimer = null;
 
   function typeLabel(type) {
     if (type === "spin") return "Spin The Wheel";
     return "General Entry";
+  }
+
+  function safeBannerUrl(value) {
+    const raw = String(value || "").trim();
+    if (/^https?:\/\//i.test(raw) || raw.startsWith("data:")) {
+      return raw;
+    }
+    return "https://images.unsplash.com/photo-1519750157634-b6d493a0f77c?auto=format&fit=crop&w=1400&q=80";
   }
 
   function bestDealForQty(deals, qty) {
@@ -113,25 +128,35 @@
     cardElementWrap.classList.remove("hidden");
   }
 
-  async function revealSpinAndRedirect(orderId, finalNumber) {
-    spinModalStatus.textContent = "Payment successful";
+  function openSpinModal() {
+    spinModalTitle.textContent = "Spinning...";
+    spinModalSubtitle.textContent = "Your number is being selected";
+    spinRevealNumber.textContent = "?";
+    spinRevealNumber.classList.remove("animate-blink");
+    spinPriceReveal.classList.add("hidden");
     spinRevealModal.classList.remove("hidden");
     spinRevealModal.classList.add("flex");
+    const totalSpots = Number((raffle && raffle.totalSpots) || 500);
+    flickerTimer = setInterval(() => {
+      spinRevealNumber.textContent = String(Math.floor(Math.random() * totalSpots) + 1);
+    }, 80);
+  }
 
-    let ticks = 0;
-    await new Promise((resolve) => {
-      const timer = setInterval(() => {
-        spinRevealNumber.textContent = String(Math.floor(Math.random() * 99) + 1);
-        ticks += 1;
-        if (ticks > 20) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 95);
-    });
+  function closeSpinModal() {
+    if (flickerTimer) { clearInterval(flickerTimer); flickerTimer = null; }
+    spinRevealModal.classList.add("hidden");
+    spinRevealModal.classList.remove("flex");
+  }
 
+  async function revealSpinSuccess(orderId, finalNumber) {
+    if (flickerTimer) { clearInterval(flickerTimer); flickerTimer = null; }
+    spinModalTitle.textContent = "You got it!";
+    spinModalSubtitle.textContent = "";
     spinRevealNumber.textContent = String(finalNumber);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    spinRevealNumber.classList.add("animate-blink");
+    spinFinalPrice.textContent = "$" + String(finalNumber) + ".00";
+    spinPriceReveal.classList.remove("hidden");
+    await new Promise((resolve) => setTimeout(resolve, 3500));
     window.location.href = "/success.html?order_id=" + encodeURIComponent(orderId);
   }
 
@@ -170,27 +195,19 @@
     raffle = { id: snap.docs[0].id, ...snap.docs[0].data() };
     raffleContent.classList.remove("hidden");
 
-    raffleBanner.src = raffle.bannerImage || "https://images.unsplash.com/photo-1519750157634-b6d493a0f77c?auto=format&fit=crop&w=1400&q=80";
+    raffleBanner.src = safeBannerUrl(raffle.bannerImage);
     raffleTypeBadge.textContent = typeLabel(raffle.type);
     raffleName.textContent = raffle.name || "Raffle";
     raffleDescription.textContent = raffle.description || "";
     raffleEntryPrice.textContent = RafflePlatform.formatCurrency(Math.round(Number(raffle.entryPrice || 0) * 100), "usd");
 
-    const paidEntriesSnap = await db.collection("entries")
-      .where("raffleId", "==", raffle.id)
-      .where("paymentStatus", "==", "paid")
-      .get();
-    const paidCount = paidEntriesSnap.size;
-
-    let originalTotal = null;
-    if (raffle.type === "spin") {
-      originalTotal = Number(raffle.totalSpots || 0);
-    } else if (!raffle.unlimitedEntries && Number(raffle.maxEntries || 0) > 0) {
-      originalTotal = Number(raffle.maxEntries || 0);
-    }
+    const statsResult = await functions.httpsCallable("getRafflePublicStats")({ raffleId: raffle.id });
+    const stats = statsResult.data || {};
+    const paidCount = Number(stats.paidCount || 0);
+    const originalTotal = stats.originalTotal == null ? null : Number(stats.originalTotal);
 
     if (originalTotal && originalTotal > 0) {
-      const left = Math.max(originalTotal - paidCount, 0);
+      const left = Number(stats.ticketsLeft == null ? 0 : stats.ticketsLeft);
       ticketsLeftValue.textContent = String(left);
       ticketsLeftDetail.textContent = String(originalTotal) + " total - " + String(paidCount) + " paid";
     } else {
@@ -199,15 +216,30 @@
     }
     ticketsLeftCard.classList.remove("hidden");
 
+    if (raffle.type === "spin" && originalTotal && originalTotal > 0) {
+      const left = Number(stats.ticketsLeft == null ? 0 : stats.ticketsLeft);
+      const digits = String(Math.max(left, 0)).split("");
+      scoreDigits.innerHTML = digits
+        .map(
+          (d) =>
+            '<div class="flex h-16 w-12 items-center justify-center rounded-xl border-2 border-amber-300 bg-white shadow-sm">' +
+            '<span class="text-3xl font-extrabold text-slate-900">' + d + "</span></div>"
+        )
+        .join("");
+      scoreSubtext.textContent = "Out of " + String(originalTotal) + " total spots";
+      spinScoreboard.classList.remove("hidden");
+      ticketsLeftCard.classList.add("hidden");
+    }
+
     if (raffle.type === "spin") {
-      spinInfo.classList.remove("hidden");
-      spinSummary.textContent = "Numbers are assigned automatically after payment. Total spots: " + String(raffle.totalSpots || 0);
+      spinInfo.classList.add("hidden");
       priceCard.classList.add("hidden");
       estimateCard.classList.add("hidden");
       entryQtyWrap.classList.add("hidden");
       spinOneTicketNote.classList.remove("hidden");
       entryQtyInput.value = "1";
       entryQtyInput.disabled = true;
+      checkoutBtn.textContent = "Pay Now";
       await initializeCardElementForSpin();
     } else {
       priceCard.classList.remove("hidden");
@@ -234,17 +266,11 @@
     const buyerEmail = document.getElementById("buyerEmail").value.trim();
     const buyerPhone = document.getElementById("buyerPhone").value.trim();
 
-    checkoutBtn.disabled = true;
-    checkoutBtn.textContent = "Processing...";
-
     try {
       if (raffle.type === "spin") {
         if (!stripe || !cardElement) {
-          throw new Error("Card form is not ready. Please reload and try again.");
+          throw new Error("Payment form is not ready. Please reload and try again.");
         }
-
-        setMessage("Reserving your number...", "success");
-        checkoutMessage.classList.remove("hidden");
 
         const startIntent = await functions.httpsCallable("createSpinPaymentIntent")({
           raffleId: raffle.id,
@@ -252,48 +278,49 @@
           buyerEmail,
           buyerPhone,
         });
-
-        const data = startIntent.data || {};
-        if (!data.clientSecret || !data.orderId) {
-          throw new Error("Unable to start payment.");
+        const spinReservationData = startIntent.data || {};
+        if (!spinReservationData.clientSecret || !spinReservationData.orderId) {
+          throw new Error("Unable to reserve a spot. Please try again.");
         }
 
-        const confirmation = await stripe.confirmCardPayment(data.clientSecret, {
+        checkoutBtn.disabled = true;
+        checkoutBtn.textContent = "Processing...";
+        checkoutMessage.classList.add("hidden");
+
+        openSpinModal();
+
+        const confirmation = await stripe.confirmCardPayment(spinReservationData.clientSecret, {
           payment_method: {
             card: cardElement,
-            billing_details: {
-              name: buyerName,
-              email: buyerEmail,
-              phone: buyerPhone,
-            },
+            billing_details: { name: buyerName, email: buyerEmail, phone: buyerPhone },
           },
         });
 
         if (confirmation.error) {
+          closeSpinModal();
           await functions.httpsCallable("releaseSpinReservation")({
-            orderId: data.orderId,
+            orderId: spinReservationData.orderId,
             reason: "payment_declined",
-          });
-          setMessage("Payment declined. Your payment did not go through. Please try again.", "error");
+          }).catch(() => {});
+          setMessage("Payment failed: " + (confirmation.error.message || "Card declined.") + " Please try again.", "error");
           checkoutMessage.classList.remove("hidden");
           checkoutBtn.disabled = false;
           checkoutBtn.textContent = "Pay Now";
           return;
         }
 
-        setMessage("Payment successful. Revealing your number...", "success");
-        checkoutMessage.classList.remove("hidden");
-
-        const paidOrder = await waitForPaidOrder(data.orderId);
+        const paidOrder = await waitForPaidOrder(spinReservationData.orderId);
         const number = Array.isArray(paidOrder.assignedNumbers) ? paidOrder.assignedNumbers[0] : null;
         if (!number) {
           throw new Error("Payment completed, but number is not ready yet. Please refresh shortly.");
         }
-        await revealSpinAndRedirect(data.orderId, number);
+        await revealSpinSuccess(spinReservationData.orderId, number);
         return;
       }
 
       const callable = functions.httpsCallable("createCheckoutSession");
+      checkoutBtn.disabled = true;
+      checkoutBtn.textContent = "Redirecting...";
       const result = await callable({
         raffleId: raffle.id,
         quantity: qty,
@@ -312,7 +339,11 @@
       setMessage(error.message || "Could not start checkout.", "error");
       checkoutMessage.classList.remove("hidden");
       checkoutBtn.disabled = false;
-      checkoutBtn.textContent = "Pay Now";
+      if (raffle && raffle.type === "spin") {
+        checkoutBtn.textContent = "Pay Now";
+      } else {
+        checkoutBtn.textContent = "Continue to Checkout";
+      }
     }
   });
 

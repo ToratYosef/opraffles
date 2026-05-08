@@ -1,439 +1,421 @@
 /* global RafflePlatform */
-(function adminController() {
-  const storage = RafflePlatform.storage;
+(function spinControlRoom() {
   const functions = RafflePlatform.functions;
   const HARDCODED_ADMIN_CODE = "123";
 
-  const isAdminLanding = window.location.pathname.endsWith("/admin/") || window.location.pathname.endsWith("/admin/index.html");
-  const isDashboard = window.location.pathname.endsWith("/admin/raffle.html");
+  const loginSection = document.getElementById("loginSection");
+  const dashboardSection = document.getElementById("dashboardSection");
+  if (!loginSection || !dashboardSection) return;
 
-  async function validateAdminCode(code) {
-    return code === HARDCODED_ADMIN_CODE;
-  }
+  const loginForm = document.getElementById("loginForm");
+  const adminCodeInput = document.getElementById("adminCode");
+  const loginMessage = document.getElementById("loginMessage");
+  const signOutBtn = document.getElementById("signOutBtn");
+  const adminStatusChip = document.getElementById("adminStatusChip");
+  const loggedInAs = document.getElementById("loggedInAs");
 
-  if (isAdminLanding) {
-    const form = document.getElementById("adminCodeForm");
-    const message = document.getElementById("adminCodeMessage");
+  const raffleSelector = document.getElementById("raffleSelector");
+  const selectedType = document.getElementById("selectedType");
+  const selectedStatus = document.getElementById("selectedStatus");
+  const selectedRange = document.getElementById("selectedRange");
+  const selectorHint = document.getElementById("selectorHint");
+  const refreshSelectedBtn = document.getElementById("refreshSelectedBtn");
 
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      message.classList.add("hidden");
-      const code = document.getElementById("adminCode").value.trim();
-
-      try {
-        const ok = await validateAdminCode(code);
-        if (!ok) {
-          message.textContent = "Invalid admin code.";
-          message.className = "mt-2 rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700";
-          return;
-        }
-
-        sessionStorage.setItem("opraffles_admin_code", code);
-        window.location.href = "/admin/raffle.html";
-      } catch (error) {
-        console.error(error);
-        message.textContent = "Could not verify code right now.";
-        message.className = "mt-2 rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700";
-      }
-    });
-
-    return;
-  }
-
-  if (!isDashboard) {
-    return;
-  }
-
-  const savedCode = sessionStorage.getItem("opraffles_admin_code");
-  if (!savedCode) {
-    window.location.href = "/admin/index.html";
-    return;
-  }
-
-  async function enforceAccess() {
-    const ok = await validateAdminCode(savedCode);
-    if (!ok) {
-      sessionStorage.removeItem("opraffles_admin_code");
-      window.location.href = "/admin/index.html";
-    }
-  }
-
-  const sectionTitle = document.getElementById("sectionTitle");
-  const sidebarNav = document.getElementById("sidebarNav");
-  const refreshBtn = document.getElementById("refreshDashboardBtn");
-  const logoutBtn = document.getElementById("adminLogoutBtn");
-
-  const statTotalRaffles = document.getElementById("statTotalRaffles");
-  const statActiveRafflesAdmin = document.getElementById("statActiveRafflesAdmin");
+  const statSold = document.getElementById("statSold");
   const statRevenue = document.getElementById("statRevenue");
-  const statEntries = document.getElementById("statEntries");
+  const statReserved = document.getElementById("statReserved");
+  const statLeft = document.getElementById("statLeft");
 
-  const recentOrdersTable = document.getElementById("recentOrdersTable");
-  const rafflesTable = document.getElementById("rafflesTable");
-  const ordersTable = document.getElementById("ordersTable");
-  const entriesTable = document.getElementById("entriesTable");
+  const ticketTableBody = document.getElementById("ticketTableBody");
+  const tableMeta = document.getElementById("tableMeta");
 
-  const createRaffleForm = document.getElementById("createRaffleForm");
-  const createRaffleMessage = document.getElementById("createRaffleMessage");
-  const limitMode = document.getElementById("limitMode");
-  const maxEntriesField = document.getElementById("maxEntries");
-  const generalOptions = document.getElementById("generalOptions");
-  const spinFields = document.getElementById("spinFields");
-  const entryPriceLabel = document.getElementById("entryPriceLabel");
-  const entryPriceInput = document.getElementById("entryPriceInput");
-  const entryPriceWrap = document.getElementById("entryPriceWrap");
-  const bannerFileInput = document.getElementById("bannerFile");
-  const bannerImageInput = document.getElementById("bannerImage");
+  const modalBackdrop = document.getElementById("modalBackdrop");
+  const manualModal = document.getElementById("manualModal");
+  const manualForm = document.getElementById("manualForm");
+  const wheelModal = document.getElementById("wheelModal");
+  const wheelList = document.getElementById("wheelList");
+  const pickWinnerBtn = document.getElementById("pickWinnerBtn");
+  const winnerModal = document.getElementById("winnerModal");
+  const winnerName = document.getElementById("winnerName");
+  const winnerTicket = document.getElementById("winnerTicket");
+  const winnerPhone = document.getElementById("winnerPhone");
+  const deleteModal = document.getElementById("deleteModal");
+  const deleteTicketText = document.getElementById("deleteTicketText");
+  const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+  const refundModal = document.getElementById("refundModal");
+  const refundTicketText = document.getElementById("refundTicketText");
+  const confirmRefundBtn = document.getElementById("confirmRefundBtn");
 
-  const spinRaffleSelect = document.getElementById("spinRaffleSelect");
-  const generateWheelListBtn = document.getElementById("generateWheelListBtn");
-  const includeManualToggle = document.getElementById("includeManualToggle");
-  const spinSpotStats = document.getElementById("spinSpotStats");
-  const wheelNameList = document.getElementById("wheelNameList");
-  const wheelOfNamesLink = document.getElementById("wheelOfNamesLink");
-  const openInternalWheelBtn = document.getElementById("openInternalWheelBtn");
-  const exportCsvBtn = document.getElementById("exportCsvBtn");
+  const actionButtons = Array.from(document.querySelectorAll(".spin-action"));
 
-  let cachedRaffles = [];
-  let cachedEntries = [];
+  let adminCode = sessionStorage.getItem("opraffles_admin_code") || "";
+  let raffles = [];
+  let selectedRaffleId = "";
+  let selectedSnapshot = null;
+  let activeDeleteTicket = null;
+  let activeRefundTicket = null;
 
-  function switchSection(nextSection) {
-    document.querySelectorAll(".dashboard-section").forEach((el) => el.classList.add("hidden"));
-    const section = document.getElementById("section-" + nextSection);
-    if (section) section.classList.remove("hidden");
-
-    sidebarNav.querySelectorAll("button").forEach((button) => {
-      if (button.dataset.section === nextSection) {
-        button.className = "w-full rounded-xl bg-white/15 px-4 py-3 text-left text-sm font-semibold";
-      } else {
-        button.className = "w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10";
-      }
-    });
-
-    sectionTitle.textContent = nextSection === "spin" ? "Spin Wheel" : nextSection.charAt(0).toUpperCase() + nextSection.slice(1);
+  function formatCurrency(cents) {
+    return RafflePlatform.formatCurrency(Number(cents || 0), "usd");
   }
 
-  function renderRows(target, rows, emptyText) {
-    target.innerHTML = "";
-    if (!rows.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="6" class="px-3 py-3 text-sm text-slate-500">' + emptyText + "</td>";
-      target.appendChild(tr);
+  function setActionDisabled(disabled) {
+    actionButtons.forEach((btn) => {
+      btn.disabled = !!disabled;
+    });
+  }
+
+  function clearStatsAndTable(message) {
+    statSold.textContent = "0 / 0";
+    statRevenue.textContent = "$0.00";
+    statReserved.textContent = "0";
+    statLeft.textContent = "0";
+    ticketTableBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-sm text-slate-400">' + message + "</td></tr>";
+    tableMeta.textContent = "No raffle selected";
+  }
+
+  function setSelectorHeader(raffle) {
+    if (!raffle) {
+      selectedType.textContent = "-";
+      selectedStatus.textContent = "-";
+      selectedRange.textContent = "-";
       return;
     }
-    rows.forEach((row) => target.appendChild(row));
+    selectedType.textContent = raffle.type || "-";
+    selectedStatus.textContent = raffle.active ? "Active" : "Inactive";
+    const min = Number(raffle.minNumber || 1);
+    const max = Number(raffle.maxNumber || raffle.totalSpots || 0);
+    selectedRange.textContent = min && max ? (String(min) + "-" + String(max)) : "-";
   }
 
-  function parseDealTiers(raw) {
-    if (!raw.trim()) return [];
-    const entries = raw
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const [qtyRaw, pctRaw] = part.split("=").map((v) => v.trim());
-        return {
-          qty: Number(qtyRaw),
-          discountPercent: Number(pctRaw),
-        };
-      })
-      .filter((tier) => Number.isInteger(tier.qty) && tier.qty >= 2 && tier.discountPercent > 0 && tier.discountPercent < 100)
-      .sort((a, b) => a.qty - b.qty);
-
-    return entries;
+  function statusBadge(status) {
+    const s = String(status || "").toLowerCase();
+    if (s === "paid") return "bg-emerald-500/15 border-emerald-400/40 text-emerald-300";
+    if (s === "reserved") return "bg-amber-500/15 border-amber-400/40 text-amber-300";
+    if (s === "claimed") return "bg-sky-500/15 border-sky-400/40 text-sky-300";
+    if (s === "refunded") return "bg-rose-500/15 border-rose-400/40 text-rose-300";
+    return "bg-slate-500/15 border-slate-400/40 text-slate-300";
   }
 
-  function getCallable(name) {
-    if (!functions) {
-      throw new Error("Firebase Functions SDK is unavailable on this page.");
+  function openModal(id) {
+    modalBackdrop.classList.remove("hidden");
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove("hidden");
+      el.classList.add("flex");
     }
-    return functions.httpsCallable(name);
   }
 
-  async function callAdmin(name, payload) {
-    const callable = getCallable(name);
-    const response = await callable({
-      adminCode: savedCode,
-      ...payload,
-    });
-    return response.data;
-  }
-
-  async function uploadBannerIfNeeded(slug) {
-    const file = bannerFileInput.files && bannerFileInput.files[0];
-    if (!file) return String(bannerImageInput.value || "").trim();
-    if (!storage) {
-      throw new Error("Firebase Storage is not initialized.");
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add("hidden");
+      el.classList.remove("flex");
     }
-
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-    const safeSlug = slug.replace(/[^a-z0-9-]/g, "");
-    const path = "raffle-banners/" + safeSlug + "-" + Date.now() + "." + ext;
-    const uploadTask = storage.ref(path).put(file, { contentType: file.type || "image/jpeg" });
-    await uploadTask;
-    const url = await storage.ref(path).getDownloadURL();
-    bannerImageInput.value = url;
-    return url;
+    const anyOpen = [manualModal, wheelModal, winnerModal, deleteModal, refundModal].some((m) => m && !m.classList.contains("hidden"));
+    if (!anyOpen) modalBackdrop.classList.add("hidden");
   }
 
-  async function loadDashboard() {
+  function closeAllModals() {
+    ["manualModal", "wheelModal", "winnerModal", "deleteModal", "refundModal"].forEach(closeModal);
+    modalBackdrop.classList.add("hidden");
+  }
+
+  function callAdmin(name, payload) {
+    const callable = functions.httpsCallable(name);
+    return callable({ adminCode, ...payload }).then((r) => r.data || {});
+  }
+
+  async function loadRaffles() {
     const data = await callAdmin("adminGetDashboard", {});
-    const raffles = data.raffles || [];
-    const orders = data.orders || [];
-    const entries = data.entries || [];
+    raffles = (data.raffles || []).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
-    cachedRaffles = raffles;
-    cachedEntries = entries;
+    raffleSelector.innerHTML = '<option value="">Select Spin Raffle...</option>' +
+      raffles
+        .filter((r) => r.type === "spin")
+        .map((r) => '<option value="' + r.id + '">' + (r.name || r.id) + "</option>")
+        .join("");
 
-    const revenueCents = Number(data.stats && data.stats.revenueCents ? data.stats.revenueCents : 0);
-
-    statTotalRaffles.textContent = String(raffles.length);
-    statActiveRafflesAdmin.textContent = String(raffles.filter((r) => r.active).length);
-    statRevenue.textContent = RafflePlatform.formatCurrency(revenueCents, "USD");
-    statEntries.textContent = String(entries.length);
-
-    const recentRows = orders.slice(0, 7).map((order) => {
-      const tr = document.createElement("tr");
-      tr.className = "border-t border-slate-100";
-      tr.innerHTML =
-        '<td class="px-3 py-2">' + (order.buyerName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (order.raffleName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (order.status || "-") + "</td>" +
-        '<td class="px-3 py-2">' + RafflePlatform.formatCurrency(order.totalAmount || 0, order.currency || "usd") + "</td>";
-      return tr;
-    });
-    renderRows(recentOrdersTable, recentRows, "No orders yet.");
-
-    const raffleRows = raffles.map((raffle) => {
-      const tr = document.createElement("tr");
-      tr.className = "border-t border-slate-100";
-      const limitText = raffle.unlimitedEntries ? "Unlimited" : "Max " + String(raffle.maxEntries || 0);
-      tr.innerHTML =
-        '<td class="px-3 py-2 font-medium">' + (raffle.name || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (raffle.type || "-") + "</td>" +
-        '<td class="px-3 py-2">' + RafflePlatform.formatCurrency(Math.round(Number(raffle.entryPrice || 0) * 100), "usd") + "</td>" +
-        '<td class="px-3 py-2">' + (raffle.active ? "Yes" : "No") + "</td>" +
-        '<td class="px-3 py-2">' + limitText + "</td>" +
-        '<td class="px-3 py-2"><button data-id="' + raffle.id + '" class="toggle-active rounded-lg border border-slate-300 px-2 py-1 text-xs">Toggle Active</button></td>';
-      return tr;
-    });
-    renderRows(rafflesTable, raffleRows, "No raffles found.");
-
-    const orderRows = orders.map((order) => {
-      const tr = document.createElement("tr");
-      tr.className = "border-t border-slate-100";
-      tr.innerHTML =
-        '<td class="px-3 py-2">' + RafflePlatform.formatDate(order.createdAt) + "</td>" +
-        '<td class="px-3 py-2">' + (order.buyerName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (order.raffleName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (order.status || "-") + "</td>" +
-        '<td class="px-3 py-2">' + String(order.entryCount || 0) + "</td>" +
-        '<td class="px-3 py-2">' + RafflePlatform.formatCurrency(order.totalAmount || 0, order.currency || "usd") + "</td>";
-      return tr;
-    });
-    renderRows(ordersTable, orderRows, "No orders found.");
-
-    const entryRows = entries.map((entry) => {
-      const tr = document.createElement("tr");
-      tr.className = "border-t border-slate-100";
-      tr.innerHTML =
-        '<td class="px-3 py-2">' + (entry.entryNumber || entry.assignedCardNumber || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (entry.buyerName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (entry.raffleName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (entry.assignedCardNumber || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (entry.source || "payment") + "</td>";
-      return tr;
-    });
-    renderRows(entriesTable, entryRows, "No entries found.");
-
-    spinRaffleSelect.innerHTML = raffles
-      .filter((r) => r.type === "spin")
-      .map((r) => '<option value="' + r.id + '">' + r.name + "</option>")
-      .join("");
-
-    if (!spinRaffleSelect.innerHTML) {
-      spinRaffleSelect.innerHTML = '<option value="">No spin raffles</option>';
+    if (selectedRaffleId && raffles.some((r) => r.id === selectedRaffleId && r.type === "spin")) {
+      raffleSelector.value = selectedRaffleId;
     }
   }
 
-  createRaffleForm.addEventListener("submit", async (event) => {
+  function renderTickets(tickets) {
+    if (!Array.isArray(tickets) || !tickets.length) {
+      ticketTableBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-sm text-slate-400">No tickets found for this raffle.</td></tr>';
+      return;
+    }
+
+    ticketTableBody.innerHTML = tickets.map((t) => {
+      const canDelete = !!t.id && t.source !== "reservation";
+      const canRefund = !!t.id && (t.status === "paid" || t.status === "claimed");
+      const canClaim = !!t.id && t.status === "paid";
+      return '<tr class="border-t border-slate-800 hover:bg-slate-900/60">' +
+        '<td class="px-3 py-3 font-bold text-amber-200">' + String(t.ticketNumber || "-") + "</td>" +
+        '<td class="px-3 py-3"><span class="rounded-full border px-2 py-1 text-xs font-semibold uppercase ' + statusBadge(t.status) + '">' + String(t.status || "-") + "</span></td>" +
+        '<td class="px-3 py-3">' + String(t.buyerName || "-") + "</td>" +
+        '<td class="px-3 py-3">' + String(t.email || "-") + "</td>" +
+        '<td class="px-3 py-3">' + String(t.phone || "-") + "</td>" +
+        '<td class="px-3 py-3">' + formatCurrency(t.amount || 0) + "</td>" +
+        '<td class="px-3 py-3">' + RafflePlatform.formatDate(t.timestamp) + "</td>" +
+        '<td class="px-3 py-3"><div class="flex flex-wrap gap-1">' +
+          '<button data-action="view" data-id="' + String(t.id || "") + '" class="rounded-lg border border-slate-700 px-2 py-1 text-xs">View</button>' +
+          '<button data-action="delete" data-id="' + String(t.id || "") + '" class="rounded-lg border border-rose-300/40 px-2 py-1 text-xs text-rose-300 ' + (canDelete ? '' : 'opacity-40 cursor-not-allowed') + '">Delete</button>' +
+          '<button data-action="refund" data-id="' + String(t.id || "") + '" class="rounded-lg border border-amber-300/40 px-2 py-1 text-xs text-amber-200 ' + (canRefund ? '' : 'opacity-40 cursor-not-allowed') + '">Refund</button>' +
+          '<button data-action="claim" data-id="' + String(t.id || "") + '" class="rounded-lg border border-sky-300/40 px-2 py-1 text-xs text-sky-200 ' + (canClaim ? '' : 'opacity-40 cursor-not-allowed') + '">Mark Claimed</button>' +
+        "</div></td>" +
+      "</tr>";
+    }).join("");
+  }
+
+  async function loadSelectedSnapshot() {
+    selectedRaffleId = String(raffleSelector.value || "").trim();
+    if (!selectedRaffleId) {
+      selectedSnapshot = null;
+      setSelectorHeader(null);
+      selectorHint.textContent = "Select a raffle to manage tickets.";
+      setActionDisabled(true);
+      clearStatsAndTable("Select a raffle to manage tickets.");
+      return;
+    }
+
+    const snapshot = await callAdmin("adminGetSpinRaffleSnapshot", { raffleId: selectedRaffleId });
+    selectedSnapshot = snapshot;
+    setSelectorHeader(snapshot.raffle || null);
+
+    if (!snapshot.isSpin) {
+      selectorHint.textContent = "This admin screen is only for spin raffles.";
+      setActionDisabled(true);
+      clearStatsAndTable("This admin screen is only for spin raffles.");
+      return;
+    }
+
+    selectorHint.textContent = "Managing: " + String(snapshot.raffle.name || selectedRaffleId);
+    setActionDisabled(false);
+    const stats = snapshot.stats || {};
+    statSold.textContent = String(stats.ticketsSold || 0) + " / " + String(stats.totalSpots || 0);
+    statRevenue.textContent = formatCurrency(stats.revenueCents || 0);
+    statReserved.textContent = String(stats.reservedCount || 0);
+    statLeft.textContent = String(stats.ticketsLeft || 0);
+    tableMeta.textContent = String((snapshot.tickets || []).length) + " rows";
+    renderTickets(snapshot.tickets || []);
+  }
+
+  function findTicketByEntryId(entryId) {
+    if (!selectedSnapshot || !Array.isArray(selectedSnapshot.tickets)) return null;
+    return selectedSnapshot.tickets.find((t) => String(t.id || "") === String(entryId || "")) || null;
+  }
+
+  function exportPaidCsv() {
+    if (!selectedSnapshot || !Array.isArray(selectedSnapshot.tickets)) return;
+    const rows = ["ticketNumber,status,buyerName,email,phone,amount"];
+    selectedSnapshot.tickets
+      .filter((t) => t.status === "paid" || t.status === "claimed")
+      .forEach((t) => {
+        rows.push([
+          t.ticketNumber || "",
+          t.status || "",
+          String(t.buyerName || "").replace(/,/g, " "),
+          String(t.email || "").replace(/,/g, " "),
+          String(t.phone || "").replace(/,/g, " "),
+          Number(t.amount || 0),
+        ].join(","));
+      });
+
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "paid-tickets-" + selectedRaffleId + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function buildWheelList() {
+    const paid = (selectedSnapshot && selectedSnapshot.paidTickets) || [];
+    if (!paid.length) {
+      wheelList.textContent = "No paid tickets available.";
+      return;
+    }
+    wheelList.textContent = paid.map((t) => (t.buyerName || "Anonymous") + " | #" + String(t.ticketNumber || "-")).join("\n");
+  }
+
+  async function onActionClick(action) {
+    if (!selectedRaffleId || !selectedSnapshot || !selectedSnapshot.isSpin) return;
+
+    if (action === "cleanup") {
+      const data = await callAdmin("adminCleanupSpinReservations", { raffleId: selectedRaffleId });
+      selectorHint.textContent = "Expired reservations removed: " + String(data.released || 0);
+      await loadSelectedSnapshot();
+      return;
+    }
+
+    if (action === "export") {
+      exportPaidCsv();
+      return;
+    }
+
+    if (action === "manual") {
+      openModal("manualModal");
+      return;
+    }
+
+    if (action === "wheel") {
+      buildWheelList();
+      openModal("wheelModal");
+      return;
+    }
+
+    if (action === "emailDrawing") {
+      selectorHint.textContent = "Email campaign placeholder: Drawing Soon (selected raffle only).";
+      return;
+    }
+
+    if (action === "emailRunningOut") {
+      selectorHint.textContent = "Email campaign placeholder: Tickets Running Out (selected raffle only).";
+    }
+  }
+
+  async function initSession() {
+    if (!adminCode || adminCode !== HARDCODED_ADMIN_CODE) {
+      loginSection.classList.remove("hidden");
+      dashboardSection.classList.add("hidden");
+      adminStatusChip.textContent = "Signed out";
+      signOutBtn.classList.add("hidden");
+      return;
+    }
+
+    loginSection.classList.add("hidden");
+    dashboardSection.classList.remove("hidden");
+    adminStatusChip.textContent = "Signed in";
+    signOutBtn.classList.remove("hidden");
+    loggedInAs.textContent = "Logged in admin: control-room";
+
+    await loadRaffles();
+    await loadSelectedSnapshot();
+  }
+
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    createRaffleMessage.classList.add("hidden");
-
-    const formData = new FormData(createRaffleForm);
-    try {
-      const slug = String(formData.get("slug") || "").trim().toLowerCase();
-      const type = String(formData.get("type") || "general");
-      const limitModeValue = String(formData.get("limitMode") || "unlimited");
-      const maxEntries = Number(formData.get("maxEntries") || 0);
-      const dealTiers = parseDealTiers(String(formData.get("dealTiers") || ""));
-      const bannerImageUrl = await uploadBannerIfNeeded(slug);
-
-      const payload = {
-        name: String(formData.get("name") || "").trim(),
-        slug,
-        type,
-        description: String(formData.get("description") || "").trim(),
-        shortDescription: String(formData.get("shortDescription") || "").trim(),
-        bannerImage: bannerImageUrl,
-        entryPrice: Number(formData.get("entryPrice") || 0),
-        active: !!formData.get("active"),
-        featured: !!formData.get("featured"),
-        unlimitedEntries: limitModeValue === "unlimited",
-        maxEntries: limitModeValue === "max" ? maxEntries : null,
-        packageDeals: dealTiers,
-        totalSpots: Number(formData.get("totalSpots") || 0),
-        assignmentMode: "random",
-      };
-
-      if (type === "spin") {
-        payload.unlimitedEntries = true;
-        payload.maxEntries = null;
-        payload.packageDeals = [];
-      }
-
-      if (!payload.name || !payload.slug) {
-        throw new Error("Raffle name and slug are required.");
-      }
-
-      if (payload.entryPrice <= 0) {
-        throw new Error("Entry price must be greater than 0.");
-      }
-
-      if (limitModeValue === "max" && maxEntries < 1) {
-        throw new Error("Set a valid max entries value.");
-      }
-
-      if (type === "spin" && payload.totalSpots < 1) {
-        throw new Error("Spin raffles must include total spots.");
-      }
-
-      await callAdmin("adminCreateRaffle", payload);
-      createRaffleForm.reset();
-      spinFields.classList.add("hidden");
-      maxEntriesField.classList.add("hidden");
-      createRaffleMessage.textContent = "Raffle created successfully.";
-      createRaffleMessage.className = "mt-3 rounded-lg bg-emerald-100 px-3 py-2 text-sm text-emerald-800";
-      await loadDashboard();
-    } catch (error) {
-      createRaffleMessage.textContent = error.message || "Could not create raffle.";
-      createRaffleMessage.className = "mt-3 rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-800";
+    const code = String(adminCodeInput.value || "").trim();
+    if (code !== HARDCODED_ADMIN_CODE) {
+      loginMessage.textContent = "Invalid admin code.";
+      loginMessage.classList.remove("hidden");
+      return;
     }
+    loginMessage.classList.add("hidden");
+    adminCode = code;
+    sessionStorage.setItem("opraffles_admin_code", code);
+    await initSession();
   });
 
-  rafflesTable.addEventListener("click", async (event) => {
-    const button = event.target.closest(".toggle-active");
-    if (!button) return;
-
-    const raffleId = button.getAttribute("data-id");
-    const raffle = cachedRaffles.find((item) => item.id === raffleId);
-    if (!raffle) return;
-
-    await callAdmin("adminToggleRaffle", {
-      raffleId,
-      active: !raffle.active,
-    });
-
-    await loadDashboard();
-  });
-
-  generateWheelListBtn.addEventListener("click", async () => {
-    const raffleId = spinRaffleSelect.value;
-    if (!raffleId) return;
-
-    const data = await callAdmin("adminGenerateWheelData", {
-      raffleId,
-      includeManual: includeManualToggle.checked,
-    });
-
-    const names = data.names || [];
-    wheelNameList.value = names.join("\n");
-    const encoded = encodeURIComponent(names.join("\n"));
-    wheelOfNamesLink.href = "https://wheelofnames.com/?names=" + encoded;
-    spinSpotStats.textContent =
-      "Assigned spots: " + String(data.assignedCount || 0) +
-      " | Available spots: " + String(data.availableCount || 0) +
-      " | Total spots: " + String(data.totalSpots || 0);
-  });
-
-  exportCsvBtn.addEventListener("click", () => {
-    const raffleId = spinRaffleSelect.value;
-    if (!raffleId) return;
-    callAdmin("exportRaffleCsv", { raffleId }).then((data) => {
-      const blob = new Blob([data.csv || ""], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "entries-" + raffleId + ".csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  });
-
-  openInternalWheelBtn.addEventListener("click", () => {
-    const names = encodeURIComponent(wheelNameList.value || "");
-    window.open("/admin/wheel.html?names=" + names, "_blank");
-  });
-
-  sidebarNav.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-section]");
-    if (!button) return;
-    switchSection(button.dataset.section);
-  });
-
-  refreshBtn.addEventListener("click", loadDashboard);
-
-  function syncTypeFields(typeValue) {
-    const isSpin = typeValue === "spin";
-    spinFields.classList.toggle("hidden", !isSpin);
-    generalOptions.classList.toggle("hidden", isSpin);
-    limitMode.closest("label").classList.toggle("hidden", isSpin);
-    entryPriceWrap.classList.toggle("hidden", isSpin);
-    if (isSpin) {
-      limitMode.value = "unlimited";
-      maxEntriesField.classList.add("hidden");
-      maxEntriesField.value = "";
-      // Keep a backend-compatible default while hiding this field for spin setup UX.
-      entryPriceInput.value = entryPriceInput.value || "50";
-      entryPriceInput.required = false;
-    } else {
-      entryPriceInput.required = true;
-      if (!entryPriceInput.value || Number(entryPriceInput.value) === 50) {
-        entryPriceInput.value = "";
-      }
-    }
-    entryPriceLabel.textContent = "Entry price";
-    entryPriceInput.placeholder = "Price per entry";
-  }
-
-  createRaffleForm.addEventListener("change", (event) => {
-    if (event.target.name === "type") {
-      syncTypeFields(event.target.value);
-    }
-    if (event.target.name === "limitMode") {
-      maxEntriesField.classList.toggle("hidden", event.target.value !== "max");
-    }
-  });
-
-  syncTypeFields(String(new FormData(createRaffleForm).get("type") || "general"));
-
-  logoutBtn.addEventListener("click", () => {
+  signOutBtn.addEventListener("click", () => {
+    adminCode = "";
+    selectedSnapshot = null;
+    selectedRaffleId = "";
     sessionStorage.removeItem("opraffles_admin_code");
-    window.location.href = "/admin/index.html";
+    closeAllModals();
+    initSession();
   });
 
-  enforceAccess()
-    .then(async () => {
-      try {
-        await loadDashboard();
-      } catch (error) {
-        console.error("Admin load failed", error);
-        sectionTitle.textContent = "Dashboard Error";
-        spinSpotStats.textContent = "Failed to load dashboard data. Deploy Functions and refresh.";
-      }
-    })
-    .catch((error) => {
-      console.error("Admin access check failed", error);
-      window.location.href = "/admin/index.html";
+  raffleSelector.addEventListener("change", loadSelectedSnapshot);
+  refreshSelectedBtn.addEventListener("click", loadSelectedSnapshot);
+
+  actionButtons.forEach((btn) => {
+    btn.addEventListener("click", () => onActionClick(btn.dataset.action));
+  });
+
+  document.querySelectorAll("[data-close-modal]").forEach((el) => {
+    el.addEventListener("click", () => closeModal(el.getAttribute("data-close-modal")));
+  });
+
+  modalBackdrop.addEventListener("click", closeAllModals);
+
+  manualForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selectedRaffleId) return;
+    const fd = new FormData(manualForm);
+    await callAdmin("createManualEntry", {
+      raffleId: selectedRaffleId,
+      buyerName: String(fd.get("buyerName") || "").trim(),
+      buyerEmail: String(fd.get("buyerEmail") || "").trim(),
+      buyerPhone: String(fd.get("buyerPhone") || "").trim(),
+      quantity: 1,
     });
+    closeModal("manualModal");
+    manualForm.reset();
+    await loadSelectedSnapshot();
+  });
+
+  pickWinnerBtn.addEventListener("click", () => {
+    const paid = (selectedSnapshot && selectedSnapshot.paidTickets) || [];
+    if (!paid.length) {
+      wheelList.textContent = "No paid tickets to pick from.";
+      return;
+    }
+    const winner = paid[Math.floor(Math.random() * paid.length)];
+    winnerName.textContent = winner.buyerName || "Anonymous";
+    winnerTicket.textContent = "Ticket #: " + String(winner.ticketNumber || "-");
+    winnerPhone.textContent = "Phone: " + String(winner.phone || "-");
+    openModal("winnerModal");
+  });
+
+  ticketTableBody.addEventListener("click", async (event) => {
+    const btn = event.target.closest("button[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const entryId = btn.dataset.id;
+    const ticket = findTicketByEntryId(entryId);
+
+    if (action === "view") {
+      if (!ticket) return;
+      alert("Ticket #" + String(ticket.ticketNumber || "-") + "\nStatus: " + String(ticket.status || "-") + "\nBuyer: " + String(ticket.buyerName || "-"));
+      return;
+    }
+
+    if (!ticket) return;
+
+    if (action === "delete" && ticket.id && ticket.source !== "reservation") {
+      activeDeleteTicket = ticket;
+      deleteTicketText.textContent = "Delete ticket #" + String(ticket.ticketNumber || "-") + " for " + String(ticket.buyerName || "Unknown") + "?";
+      openModal("deleteModal");
+      return;
+    }
+
+    if (action === "refund" && ticket.id && (ticket.status === "paid" || ticket.status === "claimed")) {
+      activeRefundTicket = ticket;
+      refundTicketText.textContent = "Refund ticket #" + String(ticket.ticketNumber || "-") + " for " + String(ticket.buyerName || "Unknown") + "?";
+      openModal("refundModal");
+      return;
+    }
+
+    if (action === "claim" && ticket.id && ticket.status === "paid") {
+      await callAdmin("adminMarkSpinTicketClaimed", { entryId: ticket.id });
+      await loadSelectedSnapshot();
+    }
+  });
+
+  confirmDeleteBtn.addEventListener("click", async () => {
+    if (!activeDeleteTicket || !activeDeleteTicket.id) return;
+    await callAdmin("adminDeleteSpinTicket", { entryId: activeDeleteTicket.id });
+    activeDeleteTicket = null;
+    closeModal("deleteModal");
+    await loadSelectedSnapshot();
+  });
+
+  confirmRefundBtn.addEventListener("click", async () => {
+    if (!activeRefundTicket || !activeRefundTicket.id) return;
+    await callAdmin("adminRefundSpinTicket", { entryId: activeRefundTicket.id });
+    activeRefundTicket = null;
+    closeModal("refundModal");
+    await loadSelectedSnapshot();
+  });
+
+  setActionDisabled(true);
+  clearStatsAndTable("Select a raffle to manage tickets.");
+  initSession().catch((error) => {
+    console.error(error);
+    selectorHint.textContent = "Failed to initialize admin control room.";
+  });
 })();

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Raffle Dashboard | OP Raffles Admin</title>
+    <title>Spin Control Room | OP Raffles Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -12,217 +12,188 @@
       tailwind.config = {
         theme: {
           extend: {
-            fontFamily: {
-              sans: ["Sora", "ui-sans-serif", "system-ui"],
+            fontFamily: { sans: ["Sora", "ui-sans-serif", "system-ui"] },
+            boxShadow: {
+              glow: "0 0 0 1px rgba(251,191,36,.35), 0 0 30px rgba(251,191,36,.18)",
             },
           },
         },
       };
     </script>
   </head>
-  <body class="min-h-screen bg-stone-50 font-sans text-slate-900">
-    <div class="grid min-h-screen lg:grid-cols-[280px_1fr]">
-      <aside class="border-r border-amber-900/20 bg-amber-900 text-amber-50">
-        <div class="px-6 py-6">
-          <p class="text-xs uppercase tracking-[0.2em] text-amber-200">Admin</p>
-          <h1 class="mt-1 text-2xl font-bold text-white">OP Raffles</h1>
-        </div>
-        <nav class="space-y-1 px-3 pb-6" id="sidebarNav">
-          <button data-section="overview" class="w-full rounded-xl bg-white/15 px-4 py-3 text-left text-sm font-semibold">Overview</button>
-          <button data-section="raffles" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Raffles</button>
-          <button data-section="orders" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Orders</button>
-          <button data-section="entries" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Entries</button>
-          <button data-section="spin" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Spin Wheel</button>
-        </nav>
-        <div class="px-6 pb-6">
-          <button id="adminLogoutBtn" class="w-full rounded-xl border border-white/30 px-4 py-2 text-sm hover:bg-white/10">Sign out</button>
-        </div>
-      </aside>
-
-      <main class="p-4 sm:p-6 lg:p-8">
-        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 id="sectionTitle" class="text-2xl font-bold">Overview</h2>
-            <p class="text-sm text-slate-500">Manage raffles, orders, entries, and wheel tools.</p>
-          </div>
-          <div class="flex gap-2">
-            <button id="refreshDashboardBtn" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Refresh</button>
-          </div>
-        </div>
-
-        <section id="section-overview" class="dashboard-section space-y-5">
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-              <p class="text-xs uppercase tracking-wide text-slate-500">Total Raffles</p>
-              <p id="statTotalRaffles" class="mt-2 text-3xl font-bold">0</p>
-            </article>
-            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-              <p class="text-xs uppercase tracking-wide text-slate-500">Active Raffles</p>
-              <p id="statActiveRafflesAdmin" class="mt-2 text-3xl font-bold">0</p>
-            </article>
-            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-              <p class="text-xs uppercase tracking-wide text-slate-500">Revenue</p>
-              <p id="statRevenue" class="mt-2 text-3xl font-bold">$0.00</p>
-            </article>
-            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-              <p class="text-xs uppercase tracking-wide text-slate-500">Total Entries</p>
-              <p id="statEntries" class="mt-2 text-3xl font-bold">0</p>
-            </article>
-          </div>
-
-          <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <div class="mb-4 flex items-center justify-between">
-              <h3 class="text-lg font-bold">Recent Orders</h3>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-slate-50 text-left text-slate-500">
-                  <tr>
-                    <th class="px-3 py-2">Buyer</th>
-                    <th class="px-3 py-2">Raffle</th>
-                    <th class="px-3 py-2">Status</th>
-                    <th class="px-3 py-2">Amount</th>
-                  </tr>
-                </thead>
-                <tbody id="recentOrdersTable"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="section-raffles" class="dashboard-section hidden space-y-5">
-          <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h3 class="text-lg font-bold">Create Raffle</h3>
-            <form id="createRaffleForm" class="mt-4 grid gap-4 md:grid-cols-2">
-              <input name="name" required placeholder="Raffle name" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-              <input name="slug" required placeholder="raffle-slug" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-              <select name="type" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
-                <option value="general">General Entry Raffle</option>
-                <option value="spin">Spin The Wheel Raffle</option>
-              </select>
-              <label id="entryPriceWrap" class="grid gap-1 text-sm">
-                <span id="entryPriceLabel" class="text-slate-600">Entry price</span>
-                <input id="entryPriceInput" name="entryPrice" type="number" min="0" step="0.01" placeholder="Price per entry" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-              </label>
-
-              <label class="grid gap-2 rounded-xl border border-slate-200 p-3 text-sm md:col-span-2">
-                <span class="font-semibold text-slate-700">Banner image upload</span>
-                <input id="bannerFile" type="file" accept="image/*" class="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-                <input id="bannerImage" name="bannerImage" placeholder="Or paste image URL" class="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              </label>
-
-              <textarea name="description" placeholder="Description" rows="3" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2"></textarea>
-              <textarea name="shortDescription" placeholder="Short homepage description" rows="2" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2"></textarea>
-
-              <label class="grid gap-1 text-sm">
-                <span class="text-slate-600">Entry limit mode</span>
-                <select name="limitMode" id="limitMode" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
-                  <option value="unlimited">Unlimited entries</option>
-                  <option value="max">Maximum entries</option>
-                </select>
-              </label>
-              <input name="maxEntries" id="maxEntries" type="number" min="1" step="1" placeholder="Max entries (required for max mode)" class="hidden rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-
-              <div id="generalOptions" class="contents">
-                <label class="grid gap-1 text-sm md:col-span-2">
-                  <span class="text-slate-600">Package deal tiers (qty=discount%)</span>
-                  <input name="dealTiers" placeholder="2=10,3=15,4=20" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-                </label>
-              </div>
-
-              <div id="spinFields" class="hidden grid gap-4 md:col-span-2 md:grid-cols-2">
-                <label class="grid gap-1 text-sm">
-                  <span class="text-slate-600">One to what? (max number)</span>
-                  <input name="totalSpots" type="number" min="1" step="1" placeholder="Example: 100 means numbers 1 to 100" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-                </label>
-                <p class="md:col-span-2 text-xs text-slate-500">Spin setup only asks: one to what (max number). Assignment is always random.</p>
-              </div>
-
-              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="active" checked /> Active</label>
-              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="featured" /> Featured</label>
-              <button class="rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600 md:col-span-2" type="submit">Create Raffle</button>
-            </form>
-            <p id="createRaffleMessage" class="mt-3 hidden rounded-lg px-3 py-2 text-sm"></p>
-          </div>
-
-          <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h3 class="text-lg font-bold">All Raffles</h3>
-            <div class="mt-4 overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-slate-50 text-left text-slate-500">
-                  <tr>
-                    <th class="px-3 py-2">Name</th>
-                    <th class="px-3 py-2">Type</th>
-                    <th class="px-3 py-2">Entry Price</th>
-                    <th class="px-3 py-2">Active</th>
-                    <th class="px-3 py-2">Limit</th>
-                    <th class="px-3 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="rafflesTable"></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="section-orders" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h3 class="text-lg font-bold">Orders</h3>
-          <p class="mt-1 text-sm text-slate-500">Use filters in the next iteration. This section already pulls live orders.</p>
-          <div class="mt-4 overflow-x-auto">
-            <table class="min-w-full text-sm">
-              <thead class="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th class="px-3 py-2">Date</th>
-                  <th class="px-3 py-2">Buyer</th>
-                  <th class="px-3 py-2">Raffle</th>
-                  <th class="px-3 py-2">Status</th>
-                  <th class="px-3 py-2">Entries</th>
-                  <th class="px-3 py-2">Amount</th>
-                </tr>
-              </thead>
-              <tbody id="ordersTable"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="section-entries" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-bold">Entries</h3>
-            <button id="exportCsvBtn" class="rounded-xl border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">Export CSV</button>
-          </div>
-          <div class="mt-4 overflow-x-auto">
-            <table class="min-w-full text-sm">
-              <thead class="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th class="px-3 py-2">Entry #</th>
-                  <th class="px-3 py-2">Buyer</th>
-                  <th class="px-3 py-2">Raffle</th>
-                  <th class="px-3 py-2">Assigned Spot</th>
-                  <th class="px-3 py-2">Source</th>
-                </tr>
-              </thead>
-              <tbody id="entriesTable"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="section-spin" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 space-y-4">
-          <h3 class="text-lg font-bold">Spin Wheel Tools</h3>
-          <p class="text-sm text-slate-500">Generate wheel names from paid entries and review assigned spot numbers.</p>
-          <div class="grid gap-3 md:grid-cols-3">
-            <select id="spinRaffleSelect" class="rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
-            <label class="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm"><input id="includeManualToggle" type="checkbox" /> Include manual entries</label>
-            <button id="generateWheelListBtn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Generate Name List</button>
-          </div>
-          <div id="spinSpotStats" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">Select a raffle and generate to see spot stats.</div>
-          <textarea id="wheelNameList" rows="8" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Generated names will appear here"></textarea>
-          <div class="flex flex-wrap gap-3">
-            <a id="wheelOfNamesLink" href="#" target="_blank" class="inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open WheelOfNames URL</a>
-            <button id="openInternalWheelBtn" type="button" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open Internal Wheel</button>
-          </div>
-        </section>
-      </main>
+  <body class="min-h-screen bg-slate-950 font-sans text-slate-100">
+    <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div class="absolute -left-32 top-0 h-80 w-80 rounded-full bg-amber-500/20 blur-3xl"></div>
+      <div class="absolute right-0 top-40 h-96 w-96 rounded-full bg-orange-500/15 blur-3xl"></div>
     </div>
+
+    <header class="border-b border-amber-300/20 bg-slate-950/90 backdrop-blur">
+      <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <div class="flex items-center gap-4">
+          <p class="text-lg font-extrabold tracking-tight text-amber-300">OP Raffles</p>
+          <span class="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200">Spin Control Room</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="/index.html" class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold hover:border-amber-300/40 hover:text-amber-200">Back To Home</a>
+          <span id="adminStatusChip" class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">Signed out</span>
+          <button id="signOutBtn" class="hidden rounded-xl border border-amber-300/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/20">Sign Out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <section id="loginSection" class="mx-auto max-w-md rounded-3xl border border-amber-300/25 bg-slate-900/80 p-8 shadow-glow backdrop-blur">
+        <h1 class="text-2xl font-extrabold">Admin Sign-In</h1>
+        <p class="mt-1 text-sm text-slate-300">Enter admin code to access spin raffle controls.</p>
+        <form id="loginForm" class="mt-5 space-y-4">
+          <input id="adminCode" type="password" placeholder="Admin code" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" required />
+          <button type="submit" class="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400">Sign In</button>
+          <p id="loginMessage" class="hidden rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-300"></p>
+        </form>
+      </section>
+
+      <section id="dashboardSection" class="hidden space-y-5 rounded-3xl border border-amber-300/25 bg-slate-900/85 p-5 shadow-glow backdrop-blur lg:p-6">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-3xl font-extrabold tracking-tight">Raffle Ticket Sales</h2>
+            <p class="text-sm text-slate-300">Focused controls for spin raffle ticket management.</p>
+          </div>
+          <p id="loggedInAs" class="text-xs uppercase tracking-wide text-slate-400">Logged in admin</p>
+        </div>
+
+        <article class="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+          <p class="text-xs font-semibold uppercase tracking-widest text-amber-200">Raffle Selector</p>
+          <div class="mt-3 grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_1fr_auto]">
+            <select id="raffleSelector" class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm"></select>
+            <div class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm">Type: <span id="selectedType" class="font-semibold">-</span></div>
+            <div class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm">Status: <span id="selectedStatus" class="font-semibold">-</span></div>
+            <div class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm">Range: <span id="selectedRange" class="font-semibold">-</span></div>
+            <button id="refreshSelectedBtn" class="rounded-xl border border-amber-300/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200 hover:bg-amber-500/20">Refresh</button>
+          </div>
+          <p id="selectorHint" class="mt-3 text-sm text-slate-400">Select a raffle to manage tickets.</p>
+        </article>
+
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article class="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Tickets Sold</p>
+            <p id="statSold" class="mt-2 text-3xl font-extrabold text-amber-300">0 / 0</p>
+          </article>
+          <article class="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Total Revenue</p>
+            <p id="statRevenue" class="mt-2 text-3xl font-extrabold text-amber-300">$0.00</p>
+          </article>
+          <article class="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Reserved Tickets</p>
+            <p id="statReserved" class="mt-2 text-3xl font-extrabold text-amber-300">0</p>
+          </article>
+          <article class="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Tickets Left</p>
+            <p id="statLeft" class="mt-2 text-3xl font-extrabold text-amber-300">0</p>
+          </article>
+        </div>
+
+        <section class="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+          <p class="text-xs font-semibold uppercase tracking-widest text-amber-200">Actions</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button data-action="cleanup" class="spin-action rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40">Remove Reserved</button>
+            <button data-action="export" class="spin-action rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40">Export Paid</button>
+            <button data-action="wheel" class="spin-action rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40">Build Wheel</button>
+            <button data-action="manual" class="spin-action rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40">Manual Spin</button>
+            <button data-action="emailDrawing" class="spin-action rounded-xl border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40">Email: Drawing Soon</button>
+            <button data-action="emailRunningOut" class="spin-action rounded-xl border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40">Email: Tickets Running Out</button>
+          </div>
+        </section>
+
+        <section class="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <p class="text-xs font-semibold uppercase tracking-widest text-amber-200">Tickets</p>
+            <span id="tableMeta" class="text-xs text-slate-400">No raffle selected</span>
+          </div>
+          <div class="max-h-[520px] overflow-auto rounded-xl border border-slate-700">
+            <table class="min-w-full text-sm">
+              <thead class="sticky top-0 z-10 bg-slate-900 text-left text-xs uppercase tracking-wide text-slate-300">
+                <tr>
+                  <th class="px-3 py-3">Ticket #</th>
+                  <th class="px-3 py-3">Status</th>
+                  <th class="px-3 py-3">Purchaser Name</th>
+                  <th class="px-3 py-3">Email</th>
+                  <th class="px-3 py-3">Phone</th>
+                  <th class="px-3 py-3">Amount</th>
+                  <th class="px-3 py-3">Timestamp</th>
+                  <th class="px-3 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ticketTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="modalBackdrop" class="fixed inset-0 z-40 hidden bg-slate-950/75"></div>
+
+    <section id="manualModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+      <div class="w-full max-w-lg rounded-2xl border border-amber-300/25 bg-slate-900 p-5 shadow-glow">
+        <h3 class="text-xl font-bold">Manual Spin</h3>
+        <form id="manualForm" class="mt-4 grid gap-3">
+          <input name="buyerName" required placeholder="Name" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
+          <input name="buyerEmail" placeholder="Email" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
+          <input name="buyerPhone" placeholder="Phone" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
+          <textarea name="notes" rows="2" placeholder="Optional notes" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"></textarea>
+          <input name="customAmount" type="number" min="0" placeholder="Optional custom amount (informational)" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
+          <div class="flex gap-2 pt-2">
+            <button type="submit" class="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950">Create Manual Ticket</button>
+            <button type="button" data-close-modal="manualModal" class="rounded-xl border border-slate-700 px-4 py-2 text-sm">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="wheelModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+      <div class="w-full max-w-2xl rounded-2xl border border-amber-300/25 bg-slate-900 p-5 shadow-glow">
+        <h3 class="text-xl font-bold">Winner Picker</h3>
+        <p class="mt-1 text-sm text-slate-300">Uses only paid tickets from selected raffle.</p>
+        <div class="mt-4 flex gap-2">
+          <button id="pickWinnerBtn" class="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950">Spin / Pick Winner</button>
+          <button type="button" data-close-modal="wheelModal" class="rounded-xl border border-slate-700 px-4 py-2 text-sm">Close</button>
+        </div>
+        <div id="wheelList" class="mt-4 max-h-56 overflow-auto rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm"></div>
+      </div>
+    </section>
+
+    <section id="winnerModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+      <div class="w-full max-w-md rounded-2xl border border-amber-300/25 bg-slate-900 p-6 text-center shadow-glow">
+        <p class="text-xs uppercase tracking-widest text-amber-200">Winner</p>
+        <h3 class="mt-2 text-3xl font-extrabold">Congratulations</h3>
+        <p id="winnerName" class="mt-3 text-xl font-bold"></p>
+        <p id="winnerTicket" class="mt-1 text-sm text-slate-300"></p>
+        <p id="winnerPhone" class="mt-1 text-sm text-slate-300"></p>
+        <button type="button" data-close-modal="winnerModal" class="mt-5 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950">Close</button>
+      </div>
+    </section>
+
+    <section id="deleteModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+      <div class="w-full max-w-md rounded-2xl border border-rose-300/30 bg-slate-900 p-6 shadow-glow">
+        <h3 class="text-xl font-bold text-rose-300">Delete Ticket</h3>
+        <p id="deleteTicketText" class="mt-2 text-sm text-slate-300"></p>
+        <p class="mt-1 text-xs text-rose-300">This action cannot be undone.</p>
+        <div class="mt-4 flex gap-2">
+          <button id="confirmDeleteBtn" class="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white">Yes, Delete</button>
+          <button type="button" data-close-modal="deleteModal" class="rounded-xl border border-slate-700 px-4 py-2 text-sm">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="refundModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+      <div class="w-full max-w-md rounded-2xl border border-amber-300/25 bg-slate-900 p-6 shadow-glow">
+        <h3 class="text-xl font-bold">Refund Ticket</h3>
+        <p id="refundTicketText" class="mt-2 text-sm text-slate-300"></p>
+        <div class="mt-4 flex gap-2">
+          <button id="confirmRefundBtn" class="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950">Refund</button>
+          <button type="button" data-close-modal="refundModal" class="rounded-xl border border-slate-700 px-4 py-2 text-sm">Cancel</button>
+        </div>
+      </div>
+    </section>
 
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>

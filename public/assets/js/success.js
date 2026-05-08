@@ -2,10 +2,6 @@
 (function successPageController() {
   const functions = RafflePlatform.functions;
 
-  const spinModal = document.getElementById("spinModal");
-  const spinNumberDisplay = document.getElementById("spinNumberDisplay");
-  const spinResultText = document.getElementById("spinResultText");
-
   const successLoading = document.getElementById("successLoading");
   const successError = document.getElementById("successError");
   const successContent = document.getElementById("successContent");
@@ -47,34 +43,6 @@
     throw new Error("Payment is still processing. Please refresh in a moment.");
   }
 
-  async function runSpinAnimation(finalNumber) {
-    spinModal.classList.remove("hidden");
-    spinModal.classList.add("flex");
-    spinResultText.textContent = "Spinning...";
-    spinResultText.className = "mt-5 text-xl font-bold text-slate-600";
-
-    let ticks = 0;
-    await new Promise((resolve) => {
-      const timer = setInterval(() => {
-        const random = Math.floor(Math.random() * 99) + 1;
-        spinNumberDisplay.textContent = String(random);
-        ticks += 1;
-        if (ticks > 18) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 110);
-    });
-
-    spinNumberDisplay.textContent = String(finalNumber);
-    spinResultText.textContent = "You got " + finalNumber;
-    spinResultText.className = "mt-5 text-2xl font-extrabold text-red-600 animate-pulseFast";
-
-    await new Promise((resolve) => setTimeout(resolve, 1800));
-    spinModal.classList.remove("flex");
-    spinModal.classList.add("hidden");
-  }
-
   async function init() {
     if (!sessionId && !orderId) {
       showError("Missing payment reference in URL.");
@@ -85,7 +53,6 @@
       const order = await waitForPaidOrder();
 
       if (order.raffleType === "spin" && Array.isArray(order.assignedNumbers) && order.assignedNumbers.length) {
-        await runSpinAnimation(order.assignedNumbers[0]);
         assignedCardWrap.classList.remove("hidden");
         summaryAssignedCard.textContent = order.assignedNumbers.join(", ");
       }
