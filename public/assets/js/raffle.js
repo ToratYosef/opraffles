@@ -13,6 +13,7 @@
   const raffleDescription = document.getElementById("raffleDescription");
   const raffleEntryPrice = document.getElementById("raffleEntryPrice");
   const raffleEntryLimit = document.getElementById("raffleEntryLimit");
+  const priceCard = document.getElementById("priceCard");
   const spinInfo = document.getElementById("spinInfo");
   const spinSummary = document.getElementById("spinSummary");
   const dealInfo = document.getElementById("dealInfo");
@@ -27,6 +28,7 @@
   const checkoutMessage = document.getElementById("checkoutMessage");
   const checkoutBtn = document.getElementById("checkoutBtn");
   const cardElementWrap = document.getElementById("cardElementWrap");
+  const estimateCard = document.getElementById("estimateCard");
   const spinRevealModal = document.getElementById("spinRevealModal");
   const spinModalStatus = document.getElementById("spinModalStatus");
   const spinRevealNumber = document.getElementById("spinRevealNumber");
@@ -176,11 +178,16 @@
     if (raffle.type === "spin") {
       spinInfo.classList.remove("hidden");
       spinSummary.textContent = "Numbers are assigned automatically after payment. Total spots: " + String(raffle.totalSpots || 0);
+      priceCard.classList.add("hidden");
+      estimateCard.classList.add("hidden");
       entryQtyWrap.classList.add("hidden");
       spinOneTicketNote.classList.remove("hidden");
       entryQtyInput.value = "1";
       entryQtyInput.disabled = true;
       await initializeCardElementForSpin();
+    } else {
+      priceCard.classList.remove("hidden");
+      estimateCard.classList.remove("hidden");
     }
 
     if ((raffle.packageDeals || []).length) {
