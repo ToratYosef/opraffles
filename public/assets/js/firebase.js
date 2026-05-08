@@ -15,8 +15,12 @@
     firebase.initializeApp(runtimeConfig);
   }
 
-  const db = firebase.firestore();
-  const functions = firebase.app().functions("us-central1");
+  const db = typeof firebase.firestore === "function" ? firebase.firestore() : null;
+  let functions = null;
+  const app = firebase.app();
+  if (typeof app.functions === "function") {
+    functions = app.functions("us-central1");
+  }
 
   function formatCurrency(amountCents, currency) {
     return new Intl.NumberFormat("en-US", {
