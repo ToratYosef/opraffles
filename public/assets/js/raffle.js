@@ -12,7 +12,9 @@
   const raffleName = document.getElementById("raffleName");
   const raffleDescription = document.getElementById("raffleDescription");
   const raffleEntryPrice = document.getElementById("raffleEntryPrice");
-  const raffleEntryLimit = document.getElementById("raffleEntryLimit");
+  const ticketsLeftCard = document.getElementById("ticketsLeftCard");
+  const ticketsLeftValue = document.getElementById("ticketsLeftValue");
+  const ticketsLeftDetail = document.getElementById("ticketsLeftDetail");
   const priceCard = document.getElementById("priceCard");
   const spinInfo = document.getElementById("spinInfo");
   const spinSummary = document.getElementById("spinSummary");
@@ -173,7 +175,29 @@
     raffleName.textContent = raffle.name || "Raffle";
     raffleDescription.textContent = raffle.description || "";
     raffleEntryPrice.textContent = RafflePlatform.formatCurrency(Math.round(Number(raffle.entryPrice || 0) * 100), "usd");
-    raffleEntryLimit.textContent = raffle.unlimitedEntries ? "Unlimited" : "Max " + String(raffle.maxEntries || 0);
+
+    const paidEntriesSnap = await db.collection("entries")
+      .where("raffleId", "==", raffle.id)
+      .where("paymentStatus", "==", "paid")
+      .get();
+    const paidCount = paidEntriesSnap.size;
+
+    let originalTotal = null;
+    if (raffle.type === "spin") {
+      originalTotal = Number(raffle.totalSpots || 0);
+    } else if (!raffle.unlimitedEntries && Number(raffle.maxEntries || 0) > 0) {
+      originalTotal = Number(raffle.maxEntries || 0);
+    }
+
+    if (originalTotal && originalTotal > 0) {
+      const left = Math.max(originalTotal - paidCount, 0);
+      ticketsLeftValue.textContent = String(left);
+      ticketsLeftDetail.textContent = String(originalTotal) + " total - " + String(paidCount) + " paid";
+    } else {
+      ticketsLeftValue.textContent = "Unlimited";
+      ticketsLeftDetail.textContent = String(paidCount) + " paid so far";
+    }
+    ticketsLeftCard.classList.remove("hidden");
 
     if (raffle.type === "spin") {
       spinInfo.classList.remove("hidden");
