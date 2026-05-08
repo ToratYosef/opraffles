@@ -77,6 +77,7 @@
   const createRaffleMessage = document.getElementById("createRaffleMessage");
   const limitMode = document.getElementById("limitMode");
   const maxEntriesField = document.getElementById("maxEntries");
+  const generalOptions = document.getElementById("generalOptions");
   const spinFields = document.getElementById("spinFields");
   const entryPriceLabel = document.getElementById("entryPriceLabel");
   const entryPriceInput = document.getElementById("entryPriceInput");
@@ -284,6 +285,12 @@
         assignmentMode: String(formData.get("assignmentMode") || "next"),
       };
 
+      if (type === "spin") {
+        payload.unlimitedEntries = true;
+        payload.maxEntries = null;
+        payload.packageDeals = [];
+      }
+
       if (!payload.name || !payload.slug) {
         throw new Error("Raffle name and slug are required.");
       }
@@ -378,6 +385,13 @@
   function syncTypeFields(typeValue) {
     const isSpin = typeValue === "spin";
     spinFields.classList.toggle("hidden", !isSpin);
+    generalOptions.classList.toggle("hidden", isSpin);
+    limitMode.closest("label").classList.toggle("hidden", isSpin);
+    if (isSpin) {
+      limitMode.value = "unlimited";
+      maxEntriesField.classList.add("hidden");
+      maxEntriesField.value = "";
+    }
     entryPriceLabel.textContent = isSpin ? "Price per spot/card" : "Entry price";
     entryPriceInput.placeholder = isSpin ? "Price per spot/card" : "Price per entry";
   }

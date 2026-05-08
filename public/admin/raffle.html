@@ -123,10 +123,12 @@
               </label>
               <input name="maxEntries" id="maxEntries" type="number" min="1" step="1" placeholder="Max entries (required for max mode)" class="hidden rounded-xl border border-slate-300 px-4 py-3 text-sm" />
 
-              <label class="grid gap-1 text-sm md:col-span-2">
-                <span class="text-slate-600">Package deal tiers (qty=discount%)</span>
-                <input name="dealTiers" placeholder="2=10,3=15,4=20" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-              </label>
+              <div id="generalOptions" class="contents">
+                <label class="grid gap-1 text-sm md:col-span-2">
+                  <span class="text-slate-600">Package deal tiers (qty=discount%)</span>
+                  <input name="dealTiers" placeholder="2=10,3=15,4=20" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+                </label>
+              </div>
 
               <div id="spinFields" class="hidden grid gap-4 md:col-span-2 md:grid-cols-2">
                 <input name="totalSpots" type="number" min="1" step="1" placeholder="Total spots/cards (numbers 1..N)" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
@@ -134,7 +136,7 @@
                   <option value="next">Assignment: Next available</option>
                   <option value="random">Assignment: Random available</option>
                 </select>
-                <p class="md:col-span-2 text-xs text-slate-500">For spin raffles, set 1) total spots/cards (1..N), 2) price per spot/card, and 3) assignment mode.</p>
+                <p class="md:col-span-2 text-xs text-slate-500">For spin raffles, set only: 1) max number range (1..N), 2) price per spot/card, 3) assignment mode.</p>
               </div>
 
               <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="active" checked /> Active</label>

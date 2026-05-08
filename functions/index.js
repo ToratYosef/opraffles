@@ -10,6 +10,32 @@ const db = admin.firestore();
 setGlobalOptions({maxInstances: 10, region: "us-central1"});
 
 const ADMIN_CODE = process.env.ADMIN_CODE || "123";
+const DEFAULT_ALLOWED_ORIGINS = ["https://opraffles1.web.app"];
+
+function getAllowedOrigins() {
+	const fromEnv = String(process.env.ALLOWED_ORIGINS || "")
+			.split(",")
+			.map((v) => v.trim())
+			.filter(Boolean);
+	return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...fromEnv]));
+}
+
+function applyCors(req, res) {
+	const origin = String(req.headers.origin || "").trim();
+	const allowedOrigins = getAllowedOrigins();
+	if (origin && allowedOrigins.includes(origin)) {
+		res.set("Access-Control-Allow-Origin", origin);
+		res.set("Vary", "Origin");
+	}
+	res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+	res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+
+	if (req.method === "OPTIONS") {
+		res.status(204).send("");
+		return true;
+	}
+	return false;
+}
 
 function requireAdmin(code) {
 	if (!code || code !== ADMIN_CODE) {
@@ -129,17 +155,22 @@ exports.adminCreateRaffle = onCall(async (request) => {
 	}
 
 	const unlimitedEntries = data.unlimitedEntries !== false;
-	const maxEntries = unlimitedEntries ? null : parseIntSafe(data.maxEntries);
+	let maxEntries = unlimitedEntries ? null : parseIntSafe(data.maxEntries);
 	if (!unlimitedEntries && maxEntries < 1) {
 		throw new HttpsError("invalid-argument", "Set a valid max entries value.");
 	}
 
-	const packageDeals = buildPackageDeals(data.packageDeals);
+	let packageDeals = buildPackageDeals(data.packageDeals);
 
 	const totalSpots = type === "spin" ? parseIntSafe(data.totalSpots) : null;
 	const assignmentMode = data.assignmentMode === "random" ? "random" : "next";
 	if (type === "spin" && totalSpots < 1) {
 		throw new HttpsError("invalid-argument", "Spin raffles require total spots.");
+	}
+	if (type === "spin") {
+		// Spin raffles are constrained by spot count, not package deals or generic max-entry settings.
+		packageDeals = [];
+		maxEntries = null;
 	}
 
 	const now = admin.firestore.FieldValue.serverTimestamp();
@@ -274,7 +305,7 @@ exports.createCheckoutSession = onCall(async (request) => {
 		throw new HttpsError("failed-precondition", "Raffle is not active.");
 	}
 
-	if (!raffle.unlimitedEntries && parseIntSafe(raffle.maxEntries) > 0) {
+	if (raffle.type !== "spin" && !raffle.unlimitedEntries && parseIntSafe(raffle.maxEntries) > 0) {
 		const usedSnap = await db.collection("entries")
 				.where("raffleId", "==", raffleId)
 				.limit(parseIntSafe(raffle.maxEntries) + 1)
@@ -294,7 +325,7 @@ exports.createCheckoutSession = onCall(async (request) => {
 	}
 
 	const unitPriceCents = Math.round(parseFloatSafe(raffle.entryPrice) * 100);
-	const deal = bestDealForQty(buildPackageDeals(raffle.packageDeals), quantity);
+	const deal = raffle.type === "spin" ? {qty: 0, discountPercent: 0} : bestDealForQty(buildPackageDeals(raffle.packageDeals), quantity);
 	const subtotal = unitPriceCents * quantity;
 	const discountCents = Math.round(subtotal * (deal.discountPercent / 100));
 	const totalCents = Math.max(subtotal - discountCents, 0);
@@ -364,6 +395,10 @@ exports.createCheckoutSession = onCall(async (request) => {
 });
 
 exports.stripeWebhook = onRequest(async (req, res) => {
+	if (applyCors(req, res)) {
+		return;
+	}
+
 	if (req.method !== "POST") {
 		res.status(405).send("Method Not Allowed");
 		return;
