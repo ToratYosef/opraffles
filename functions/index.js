@@ -99,6 +99,14 @@ function buildPackageDeals(deals) {
 			.sort((a, b) => a.qty - b.qty);
 }
 
+function sanitizeImageList(value) {
+	if (!Array.isArray(value)) return [];
+	return value
+			.map((v) => String(v || "").trim())
+			.filter(Boolean)
+			.filter((v, i, arr) => arr.indexOf(v) === i);
+}
+
 function bestDealForQty(packageDeals, qty) {
 	let best = {qty: 0, discountPercent: 0};
 	packageDeals.forEach((tier) => {
@@ -150,26 +158,33 @@ async function getReservedNumbersSet(raffleId) {
 
 async function releaseExpiredReservations(raffleId) {
 	const now = admin.firestore.Timestamp.now();
-	let query = db.collection("spinReservations")
-			.where("status", "==", "reserved")
-			.where("expiresAt", "<=", now)
-			.limit(200);
-	if (raffleId) {
-		query = query.where("raffleId", "==", raffleId);
+	let released = 0;
+
+	for (;;) {
+		let query = db.collection("spinReservations")
+				.where("status", "==", "reserved")
+				.where("expiresAt", "<=", now)
+				.limit(200);
+		if (raffleId) {
+			query = query.where("raffleId", "==", raffleId);
+		}
+
+		const snap = await query.get();
+		if (snap.empty) break;
+
+		const batch = db.batch();
+		snap.docs.forEach((doc) => {
+			batch.update(doc.ref, {
+				status: "released",
+				releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+				releaseReason: "expired",
+			});
+		});
+		await batch.commit();
+		released += snap.size;
 	}
 
-	const snap = await query.get();
-	if (snap.empty) return;
-
-	const batch = db.batch();
-	snap.docs.forEach((doc) => {
-		batch.update(doc.ref, {
-			status: "released",
-			releasedAt: admin.firestore.FieldValue.serverTimestamp(),
-			releaseReason: "expired",
-		});
-	});
-	await batch.commit();
+	return released;
 }
 
 async function reserveRandomSpinNumber({raffleId, totalSpots, sessionToken, buyerName, buyerEmail, buyerPhone}) {
@@ -272,7 +287,7 @@ exports.adminCreateRaffle = onCall(CALLABLE_OPTS, async (request) => {
 	if (!name || !slug) {
 		throw new HttpsError("invalid-argument", "Raffle name and slug are required.");
 	}
-	if (entryPrice <= 0) {
+	if (type !== "spin" && entryPrice <= 0) {
 		throw new HttpsError("invalid-argument", "Entry price must be greater than zero.");
 	}
 
@@ -290,6 +305,8 @@ exports.adminCreateRaffle = onCall(CALLABLE_OPTS, async (request) => {
 	let packageDeals = buildPackageDeals(data.packageDeals);
 
 	const totalSpots = type === "spin" ? parseIntSafe(data.totalSpots) : null;
+	const minNumber = type === "spin" ? parseIntSafe(data.minNumber || 1) : null;
+	const maxNumber = type === "spin" ? parseIntSafe(data.maxNumber || totalSpots) : null;
 	let assignmentMode = data.assignmentMode === "random" ? "random" : "next";
 	if (type === "spin" && totalSpots < 1) {
 		throw new HttpsError("invalid-argument", "Spin raffles require total spots.");
@@ -302,27 +319,136 @@ exports.adminCreateRaffle = onCall(CALLABLE_OPTS, async (request) => {
 	}
 
 	const now = admin.firestore.FieldValue.serverTimestamp();
+	const bannerImages = sanitizeImageList(data.bannerImages);
+	const primaryBanner = String(data.bannerImage || bannerImages[0] || "").trim();
 	const raffleRef = db.collection("raffles").doc();
 	await raffleRef.set({
 		name,
 		slug,
 		description: String(data.description || "").trim(),
 		shortDescription: String(data.shortDescription || "").trim(),
-		bannerImage: String(data.bannerImage || "").trim(),
+		bannerImage: primaryBanner,
+		bannerImages,
 		type,
 		active: data.active !== false,
 		featured: data.featured === true,
-		entryPrice,
+		entryPrice: type === "spin" ? 0 : entryPrice,
 		packageDeals,
 		unlimitedEntries,
 		maxEntries,
 		totalSpots,
+		minNumber,
+		maxNumber,
 		assignmentMode,
 		createdAt: now,
 		updatedAt: now,
 	});
 
 	return {raffleId: raffleRef.id};
+});
+
+exports.adminUpdateRaffle = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+
+	const data = request.data || {};
+	const raffleId = String(data.raffleId || "").trim();
+	if (!raffleId) {
+		throw new HttpsError("invalid-argument", "Missing raffleId.");
+	}
+
+	const raffleRef = db.collection("raffles").doc(raffleId);
+	const snap = await raffleRef.get();
+	if (!snap.exists) {
+		throw new HttpsError("not-found", "Raffle not found.");
+	}
+	const current = snap.data();
+
+	const type = data.type === "spin" ? "spin" : "general";
+	const name = String(data.name || current.name || "").trim();
+	const slug = normalizeSlug(data.slug || current.slug);
+	const entryPrice = parseFloatSafe(data.entryPrice);
+	if (!name || !slug) {
+		throw new HttpsError("invalid-argument", "Raffle name and slug are required.");
+	}
+	if (type !== "spin" && entryPrice <= 0) {
+		throw new HttpsError("invalid-argument", "Entry price must be greater than zero.");
+	}
+
+	if (slug !== current.slug) {
+		const dupe = await db.collection("raffles").where("slug", "==", slug).limit(1).get();
+		if (!dupe.empty) {
+			throw new HttpsError("already-exists", "A raffle with this slug already exists.");
+		}
+	}
+
+	const bannerImages = sanitizeImageList(data.bannerImages);
+	const primaryBanner = String(data.bannerImage || bannerImages[0] || current.bannerImage || "").trim();
+	const unlimitedEntries = type === "spin" ? true : data.unlimitedEntries !== false;
+	const maxEntries = unlimitedEntries ? null : parseIntSafe(data.maxEntries);
+	const packageDeals = type === "spin" ? [] : buildPackageDeals(data.packageDeals);
+	const totalSpots = type === "spin" ? parseIntSafe(data.totalSpots) : null;
+	const minNumber = type === "spin" ? parseIntSafe(data.minNumber || 1) : null;
+	const maxNumber = type === "spin" ? parseIntSafe(data.maxNumber || totalSpots) : null;
+
+	await raffleRef.update({
+		name,
+		slug,
+		description: String(data.description || "").trim(),
+		shortDescription: String(data.shortDescription || "").trim(),
+		bannerImage: primaryBanner,
+		bannerImages,
+		type,
+		active: data.active !== false,
+		featured: data.featured === true,
+		entryPrice: type === "spin" ? 0 : entryPrice,
+		packageDeals,
+		unlimitedEntries,
+		maxEntries,
+		totalSpots,
+		minNumber,
+		maxNumber,
+		assignmentMode: type === "spin" ? "random" : (data.assignmentMode === "random" ? "random" : "next"),
+		updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+	});
+
+	return {success: true};
+});
+
+async function deleteByRaffleId(collectionName, raffleId) {
+	for (;;) {
+		const snap = await db.collection(collectionName)
+				.where("raffleId", "==", raffleId)
+				.limit(200)
+				.get();
+		if (snap.empty) return;
+		const batch = db.batch();
+		snap.docs.forEach((doc) => batch.delete(doc.ref));
+		await batch.commit();
+	}
+}
+
+exports.adminDeleteRaffle = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+
+	const raffleId = String(request.data && request.data.raffleId || "").trim();
+	if (!raffleId) {
+		throw new HttpsError("invalid-argument", "Missing raffleId.");
+	}
+
+	const raffleRef = db.collection("raffles").doc(raffleId);
+	const raffleSnap = await raffleRef.get();
+	if (!raffleSnap.exists) {
+		return {success: true, alreadyDeleted: true};
+	}
+
+	await Promise.all([
+		deleteByRaffleId("entries", raffleId),
+		deleteByRaffleId("orders", raffleId),
+		deleteByRaffleId("spinReservations", raffleId),
+	]);
+
+	await raffleRef.delete();
+	return {success: true};
 });
 
 exports.adminToggleRaffle = onCall(CALLABLE_OPTS, async (request) => {
@@ -391,7 +517,7 @@ exports.adminGenerateWheelData = onCall(CALLABLE_OPTS, async (request) => {
 			.get();
 
 	const filtered = entriesSnap.docs
-			.map((doc) => doc.data())
+			.map((doc) => ({id: doc.id, ...doc.data()}))
 			.filter((entry) => {
 				if (entry.paymentStatus === "paid") return true;
 				if (includeManual && entry.source === "manual") return true;
@@ -408,7 +534,181 @@ exports.adminGenerateWheelData = onCall(CALLABLE_OPTS, async (request) => {
 		assignedCount,
 		totalSpots,
 		availableCount,
+		entries: filtered,
 	};
+});
+
+exports.adminGetSpinRaffleSnapshot = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+
+	const raffleId = String(request.data && request.data.raffleId || "").trim();
+	if (!raffleId) {
+		throw new HttpsError("invalid-argument", "Missing raffleId.");
+	}
+
+	await releaseExpiredReservations(raffleId);
+
+	const raffleSnap = await db.collection("raffles").doc(raffleId).get();
+	if (!raffleSnap.exists) {
+		throw new HttpsError("not-found", "Raffle not found.");
+	}
+	const raffle = {id: raffleSnap.id, ...raffleSnap.data()};
+	if (raffle.type !== "spin") {
+		return {
+			raffle,
+			isSpin: false,
+			stats: null,
+			tickets: [],
+		};
+	}
+
+	const [entriesSnap, ordersSnap, reservedSnap] = await Promise.all([
+		db.collection("entries")
+				.where("raffleId", "==", raffleId)
+				.orderBy("createdAt", "desc")
+				.limit(5000)
+				.get(),
+		db.collection("orders")
+				.where("raffleId", "==", raffleId)
+				.orderBy("createdAt", "desc")
+				.limit(5000)
+				.get(),
+		db.collection("spinReservations")
+				.where("raffleId", "==", raffleId)
+				.where("status", "==", "reserved")
+				.where("expiresAt", ">", admin.firestore.Timestamp.now())
+				.limit(5000)
+				.get(),
+	]);
+
+	const ordersById = new Map();
+	ordersSnap.docs.forEach((doc) => ordersById.set(doc.id, doc.data()));
+
+	const paidEntries = [];
+	const tickets = [];
+	entriesSnap.docs.forEach((doc) => {
+		const e = doc.data();
+		const number = parseIntSafe(e.assignedCardNumber);
+		if (number < 1) return;
+		const order = ordersById.get(e.orderId) || null;
+		const amount = order ? parseIntSafe(order.totalAmount) : number * 100;
+		if (e.paymentStatus === "paid") paidEntries.push(e);
+		tickets.push({
+			id: doc.id,
+			ticketNumber: number,
+			status: e.paymentStatus || "paid",
+			buyerName: e.buyerName || "",
+			email: e.buyerEmail || "",
+			phone: e.buyerPhone || "",
+			amount,
+			timestamp: e.createdAt || null,
+			source: e.source || "payment",
+		});
+	});
+
+	reservedSnap.docs.forEach((doc) => {
+		const r = doc.data();
+		const number = parseIntSafe(r.number);
+		if (number < 1) return;
+		tickets.push({
+			id: doc.id,
+			reservationId: doc.id,
+			ticketNumber: number,
+			status: "reserved",
+			buyerName: r.buyerName || "",
+			email: r.buyerEmail || "",
+			phone: r.buyerPhone || "",
+			amount: number * 100,
+			timestamp: r.createdAt || null,
+			source: "reservation",
+		});
+	});
+
+	const totalSpots = parseIntSafe(raffle.totalSpots);
+	const paidCount = tickets.filter((t) => t.status === "paid").length;
+	const reservedCount = tickets.filter((t) => t.status === "reserved").length;
+	const claimedCount = tickets.filter((t) => t.status === "claimed").length;
+	const refundedCount = tickets.filter((t) => t.status === "refunded").length;
+	const soldLike = paidCount + claimedCount;
+	const ticketsLeft = totalSpots > 0 ? Math.max(totalSpots - soldLike - reservedCount, 0) : 0;
+	const revenueCents = tickets
+			.filter((t) => t.status === "paid" || t.status === "claimed")
+			.reduce((sum, t) => sum + parseIntSafe(t.amount), 0);
+
+	tickets.sort((a, b) => Number(b.ticketNumber || 0) - Number(a.ticketNumber || 0));
+
+	return {
+		raffle,
+		isSpin: true,
+		stats: {
+			totalSpots,
+			ticketsSold: soldLike,
+			revenueCents,
+			reservedCount,
+			ticketsLeft,
+			paidCount,
+			claimedCount,
+			refundedCount,
+		},
+		tickets,
+		paidTickets: tickets.filter((t) => t.status === "paid"),
+	};
+});
+
+exports.adminCleanupSpinReservations = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+	const raffleId = String(request.data && request.data.raffleId || "").trim();
+	if (!raffleId) throw new HttpsError("invalid-argument", "Missing raffleId.");
+	const released = await releaseExpiredReservations(raffleId);
+	return {released};
+});
+
+exports.adminDeleteSpinTicket = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+	const entryId = String(request.data && request.data.entryId || "").trim();
+	if (!entryId) throw new HttpsError("invalid-argument", "Missing entryId.");
+
+	const ref = db.collection("entries").doc(entryId);
+	const snap = await ref.get();
+	if (!snap.exists) return {success: true, alreadyDeleted: true};
+	await ref.delete();
+	return {success: true};
+});
+
+exports.adminMarkSpinTicketClaimed = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+	const entryId = String(request.data && request.data.entryId || "").trim();
+	if (!entryId) throw new HttpsError("invalid-argument", "Missing entryId.");
+
+	await db.collection("entries").doc(entryId).set({
+		paymentStatus: "claimed",
+		claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+	}, {merge: true});
+	return {success: true};
+});
+
+exports.adminRefundSpinTicket = onCall(CALLABLE_OPTS, async (request) => {
+	requireAdmin(request.data && request.data.adminCode);
+	const entryId = String(request.data && request.data.entryId || "").trim();
+	if (!entryId) throw new HttpsError("invalid-argument", "Missing entryId.");
+
+	const entryRef = db.collection("entries").doc(entryId);
+	const entrySnap = await entryRef.get();
+	if (!entrySnap.exists) throw new HttpsError("not-found", "Entry not found.");
+	const entry = entrySnap.data();
+
+	await entryRef.set({
+		paymentStatus: "refunded",
+		refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+	}, {merge: true});
+
+	if (entry.orderId) {
+		await db.collection("orders").doc(entry.orderId).set({
+			status: "refunded",
+			updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		}, {merge: true});
+	}
+	return {success: true};
 });
 
 exports.createCheckoutSession = onCall(CALLABLE_OPTS, async (request) => {
@@ -445,14 +745,7 @@ exports.createCheckoutSession = onCall(CALLABLE_OPTS, async (request) => {
 	}
 
 	if (raffle.type === "spin") {
-		if (quantity !== 1) {
-			throw new HttpsError("failed-precondition", "Spin raffles allow exactly one spot per payment.");
-		}
-		const totalSpots = parseIntSafe(raffle.totalSpots);
-		const assigned = await countAssignedSpinSpots(raffleId);
-		if (totalSpots - assigned < quantity) {
-			throw new HttpsError("failed-precondition", "Not enough spin spots available.");
-		}
+		throw new HttpsError("failed-precondition", "Spin raffles use on-page payment intent flow only.");
 	}
 
 	const unitPriceCents = Math.round(parseFloatSafe(raffle.entryPrice) * 100);
@@ -603,11 +896,6 @@ exports.createSpinPaymentIntent = onCall(CALLABLE_OPTS, async (request) => {
 	}
 
 	const stripe = getStripeClient();
-	const amountCents = Math.round(parseFloatSafe(raffle.entryPrice) * 100);
-	if (amountCents <= 0) {
-		throw new HttpsError("failed-precondition", "Spin raffle price must be greater than zero.");
-	}
-
 	const orderRef = db.collection("orders").doc();
 	const reservation = await reserveRandomSpinNumber({
 		raffleId,
@@ -617,6 +905,19 @@ exports.createSpinPaymentIntent = onCall(CALLABLE_OPTS, async (request) => {
 		buyerEmail,
 		buyerPhone,
 	});
+
+	// For spin raffles the ticket number IS the dollar amount.
+	// Ticket #159 -> $159.00 = 15900 cents. Never use entryPrice for spin.
+	const amountCents = reservation.reservedNumber * 100;
+	if (amountCents <= 0) {
+		await db.collection("spinReservations").doc(reservation.reservationId).set({
+			status: "released",
+			releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+			releaseReason: "invalid_amount",
+			updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		}, {merge: true});
+		throw new HttpsError("failed-precondition", "Reserved number produced an invalid charge amount.");
+	}
 
 	let paymentIntent;
 	try {
@@ -630,6 +931,8 @@ exports.createSpinPaymentIntent = onCall(CALLABLE_OPTS, async (request) => {
 				raffleType: "spin",
 				orderId: orderRef.id,
 				reservationId: reservation.reservationId,
+				reservedNumber: String(reservation.reservedNumber),
+				amountExpected: String(amountCents),
 				buyerName,
 				buyerEmail,
 				buyerPhone,
@@ -799,6 +1102,44 @@ exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 		const orderDoc = orderSnap.docs[0];
 		const orderRef = orderDoc.ref;
 		const order = orderDoc.data();
+
+		if (event.type === "payment_intent.succeeded" && order.raffleType === "spin") {
+			const metadata = payload.metadata || {};
+			const reservedNumber = parseIntSafe(order.reservedNumber || metadata.reservedNumber);
+			const expectedFromNumber = reservedNumber * 100;
+			const expectedFromMeta = parseIntSafe(metadata.amountExpected || expectedFromNumber);
+			const expectedCents = expectedFromMeta || expectedFromNumber;
+			const actualCents = parseIntSafe(payload.amount);
+
+			if (reservedNumber < 1 || expectedCents < 100 || actualCents !== expectedCents) {
+				logger.error("Spin raffle amount mismatch; rejecting payment fulfillment", {
+					orderId: orderRef.id,
+					reservationId: order.reservationId || metadata.reservationId || null,
+					reservedNumber,
+					expectedCents,
+					actualCents,
+					paymentIntentId: payload.id,
+				});
+
+				await orderRef.set({
+					status: "failed",
+					failureReason: "spin_amount_mismatch",
+					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+				}, {merge: true});
+
+				if (order.reservationId) {
+					await db.collection("spinReservations").doc(order.reservationId).set({
+						status: "released",
+						releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+						releaseReason: "spin_amount_mismatch",
+						updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+					}, {merge: true});
+				}
+
+				res.status(200).json({received: true, error: "spin_amount_mismatch"});
+				return;
+			}
+		}
 
 		if (event.type === "checkout.session.expired" ||
 			event.type === "checkout.session.async_payment_failed" ||
@@ -1026,6 +1367,55 @@ exports.getOrderBySession = onCall(CALLABLE_OPTS, async (request) => {
 			currency: order.currency || "usd",
 			assignedNumbers: Array.isArray(order.assignedNumbers) ? order.assignedNumbers : [],
 		},
+	};
+});
+
+exports.getRafflePublicStats = onCall(CALLABLE_OPTS, async (request) => {
+	const raffleId = String(request.data && request.data.raffleId || "").trim();
+	if (!raffleId) {
+		throw new HttpsError("invalid-argument", "Missing raffleId.");
+	}
+
+	const raffleSnap = await db.collection("raffles").doc(raffleId).get();
+	if (!raffleSnap.exists) {
+		throw new HttpsError("not-found", "Raffle not found.");
+	}
+	const raffle = raffleSnap.data();
+
+	const paidEntriesSnap = await db.collection("entries")
+			.where("raffleId", "==", raffleId)
+			.where("paymentStatus", "==", "paid")
+			.limit(10000)
+			.get();
+	const paidCount = paidEntriesSnap.size;
+
+	let originalTotal = null;
+	if (raffle.type === "spin") {
+		originalTotal = parseIntSafe(raffle.totalSpots);
+	} else if (!raffle.unlimitedEntries && parseIntSafe(raffle.maxEntries) > 0) {
+		originalTotal = parseIntSafe(raffle.maxEntries);
+	}
+
+	let activeReservedCount = 0;
+	if (raffle.type === "spin" && originalTotal && originalTotal > 0) {
+		const now = admin.firestore.Timestamp.now();
+		const reservedSnap = await db.collection("spinReservations")
+				.where("raffleId", "==", raffleId)
+				.where("status", "==", "reserved")
+				.where("expiresAt", ">", now)
+				.limit(10000)
+				.get();
+		activeReservedCount = reservedSnap.size;
+	}
+
+	const ticketsLeft = originalTotal && originalTotal > 0
+		? Math.max(originalTotal - paidCount - activeReservedCount, 0)
+		: null;
+
+	return {
+		paidCount,
+		originalTotal,
+		ticketsLeft,
 	};
 });
 
