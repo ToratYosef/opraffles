@@ -11,6 +11,7 @@ setGlobalOptions({maxInstances: 10, region: "us-central1"});
 
 const ADMIN_CODE = process.env.ADMIN_CODE || "123";
 const DEFAULT_ALLOWED_ORIGINS = ["https://opraffles1.web.app"];
+const SPIN_RESERVATION_MINUTES = Number(process.env.SPIN_RESERVATION_MINUTES || 15);
 
 function getAllowedOrigins() {
 	const fromEnv = String(process.env.ALLOWED_ORIGINS || "")
@@ -114,6 +115,115 @@ async function getAssignedNumbersSet(raffleId) {
 	return assigned;
 }
 
+async function getReservedNumbersSet(raffleId) {
+	const now = admin.firestore.Timestamp.now();
+	const snap = await db.collection("spinReservations")
+			.where("raffleId", "==", raffleId)
+			.where("status", "==", "reserved")
+			.where("expiresAt", ">", now)
+			.select("number")
+			.get();
+	const reserved = new Set();
+	snap.docs.forEach((doc) => {
+		const number = parseIntSafe(doc.data().number);
+		if (number > 0) reserved.add(number);
+	});
+	return reserved;
+}
+
+async function releaseExpiredReservations(raffleId) {
+	const now = admin.firestore.Timestamp.now();
+	let query = db.collection("spinReservations")
+			.where("status", "==", "reserved")
+			.where("expiresAt", "<=", now)
+			.limit(200);
+	if (raffleId) {
+		query = query.where("raffleId", "==", raffleId);
+	}
+
+	const snap = await query.get();
+	if (snap.empty) return;
+
+	const batch = db.batch();
+	snap.docs.forEach((doc) => {
+		batch.update(doc.ref, {
+			status: "released",
+			releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+			releaseReason: "expired",
+		});
+	});
+	await batch.commit();
+}
+
+async function reserveRandomSpinNumber({raffleId, totalSpots, sessionToken, buyerName, buyerEmail, buyerPhone}) {
+	await releaseExpiredReservations(raffleId);
+
+	for (let attempt = 0; attempt < 8; attempt += 1) {
+		const [assignedSet, reservedSet] = await Promise.all([
+			getAssignedNumbersSet(raffleId),
+			getReservedNumbersSet(raffleId),
+		]);
+
+		const available = [];
+		for (let i = 1; i <= totalSpots; i += 1) {
+			if (!assignedSet.has(i) && !reservedSet.has(i)) {
+				available.push(i);
+			}
+		}
+
+		if (!available.length) {
+			throw new HttpsError("failed-precondition", "No spin spots are currently available.");
+		}
+
+		const picked = available[Math.floor(Math.random() * available.length)];
+		const reservationRef = db.collection("spinReservations").doc(raffleId + "_" + String(picked));
+		const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + SPIN_RESERVATION_MINUTES * 60 * 1000);
+
+		try {
+			await db.runTransaction(async (tx) => {
+				const existing = await tx.get(reservationRef);
+				if (existing.exists) {
+					const data = existing.data();
+					if (data.status === "paid") {
+						throw new Error("RESERVE_CONFLICT");
+					}
+					if (data.status === "reserved" && data.expiresAt && data.expiresAt.toMillis() > Date.now()) {
+						throw new Error("RESERVE_CONFLICT");
+					}
+				}
+
+				tx.set(reservationRef, {
+					raffleId,
+					number: picked,
+					status: "reserved",
+					sessionToken,
+					stripeSessionId: null,
+					orderId: null,
+					buyerName,
+					buyerEmail,
+					buyerPhone,
+					expiresAt,
+					createdAt: admin.firestore.FieldValue.serverTimestamp(),
+					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+				}, {merge: true});
+			});
+
+			return {
+				reservationId: reservationRef.id,
+				reservedNumber: picked,
+				expiresAt,
+			};
+		} catch (error) {
+			if (error && error.message === "RESERVE_CONFLICT") {
+				continue;
+			}
+			throw error;
+		}
+	}
+
+	throw new HttpsError("aborted", "Could not reserve a spot. Please try again.");
+}
+
 function allocateSpinNumbers({totalSpots, assignedNumbersSet, quantity, assignmentMode}) {
 	const available = [];
 	for (let i = 1; i <= totalSpots; i += 1) {
@@ -163,7 +273,7 @@ exports.adminCreateRaffle = onCall(async (request) => {
 	let packageDeals = buildPackageDeals(data.packageDeals);
 
 	const totalSpots = type === "spin" ? parseIntSafe(data.totalSpots) : null;
-	const assignmentMode = data.assignmentMode === "random" ? "random" : "next";
+	let assignmentMode = data.assignmentMode === "random" ? "random" : "next";
 	if (type === "spin" && totalSpots < 1) {
 		throw new HttpsError("invalid-argument", "Spin raffles require total spots.");
 	}
@@ -171,6 +281,7 @@ exports.adminCreateRaffle = onCall(async (request) => {
 		// Spin raffles are constrained by spot count, not package deals or generic max-entry settings.
 		packageDeals = [];
 		maxEntries = null;
+		assignmentMode = "random";
 	}
 
 	const now = admin.firestore.FieldValue.serverTimestamp();
@@ -317,6 +428,9 @@ exports.createCheckoutSession = onCall(async (request) => {
 	}
 
 	if (raffle.type === "spin") {
+		if (quantity !== 1) {
+			throw new HttpsError("failed-precondition", "Spin raffles allow exactly one spot per payment.");
+		}
 		const totalSpots = parseIntSafe(raffle.totalSpots);
 		const assigned = await countAssignedSpinSpots(raffleId);
 		if (totalSpots - assigned < quantity) {
@@ -332,37 +446,20 @@ exports.createCheckoutSession = onCall(async (request) => {
 
 	const stripe = getStripeClient();
 	const siteUrl = process.env.SITE_URL || "http://localhost:5000";
+	const orderRef = db.collection("orders").doc();
 
-	const session = await stripe.checkout.sessions.create({
-		mode: "payment",
-		success_url: siteUrl + "/success.html?session_id={CHECKOUT_SESSION_ID}",
-		cancel_url: siteUrl + "/cancel.html",
-		customer_email: buyerEmail,
-		metadata: {
+	let reservation = null;
+	if (raffle.type === "spin") {
+		reservation = await reserveRandomSpinNumber({
 			raffleId,
-			raffleType: raffle.type,
-			quantity: String(quantity),
+			totalSpots: parseIntSafe(raffle.totalSpots),
+			sessionToken: orderRef.id,
 			buyerName,
 			buyerEmail,
 			buyerPhone,
-			discountPercent: String(deal.discountPercent || 0),
-		},
-		line_items: [
-			{
-				quantity: 1,
-				price_data: {
-					currency: "usd",
-					unit_amount: totalCents,
-					product_data: {
-						name: raffle.name + " Entries",
-						description: quantity + " entries" + (deal.discountPercent ? " with " + deal.discountPercent + "% package discount" : ""),
-					},
-				},
-			},
-		],
-	});
+		});
+	}
 
-	const orderRef = db.collection("orders").doc();
 	await orderRef.set({
 		raffleId,
 		raffleSlug: raffle.slug,
@@ -381,11 +478,76 @@ exports.createCheckoutSession = onCall(async (request) => {
 			discountPercent: deal.discountPercent || 0,
 		},
 		entryCount: quantity,
+		reservationId: reservation ? reservation.reservationId : null,
+		reservedNumber: reservation ? reservation.reservedNumber : null,
+		reservationExpiresAt: reservation ? reservation.expiresAt : null,
 		assignedNumbers: [],
 		createdAt: admin.firestore.FieldValue.serverTimestamp(),
 		paidAt: null,
 		webhookProcessed: false,
 	});
+
+	let session;
+	try {
+		session = await stripe.checkout.sessions.create({
+			mode: "payment",
+			success_url: siteUrl + "/success.html?session_id={CHECKOUT_SESSION_ID}",
+			cancel_url: siteUrl + "/cancel.html",
+			customer_email: buyerEmail,
+			metadata: {
+				raffleId,
+				raffleType: raffle.type,
+				quantity: String(quantity),
+				buyerName,
+				buyerEmail,
+				buyerPhone,
+				discountPercent: String(deal.discountPercent || 0),
+				orderId: orderRef.id,
+				reservationId: reservation ? reservation.reservationId : "",
+			},
+			line_items: [
+				{
+					quantity: 1,
+					price_data: {
+						currency: "usd",
+						unit_amount: totalCents,
+						product_data: {
+							name: raffle.name + " Entries",
+							description: quantity + " entries" + (deal.discountPercent ? " with " + deal.discountPercent + "% package discount" : ""),
+						},
+					},
+				},
+			],
+		});
+	} catch (error) {
+		if (reservation) {
+			await db.collection("spinReservations").doc(reservation.reservationId).set({
+				status: "released",
+				releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+				releaseReason: "checkout_session_create_failed",
+				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+			}, {merge: true});
+		}
+		await orderRef.set({
+			status: "failed",
+			failureReason: "checkout_session_create_failed",
+			updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		}, {merge: true});
+		throw error;
+	}
+
+	await orderRef.set({
+		stripeSessionId: session.id,
+		updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+	}, {merge: true});
+
+	if (reservation) {
+		await db.collection("spinReservations").doc(reservation.reservationId).set({
+			stripeSessionId: session.id,
+			orderId: orderRef.id,
+			updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		}, {merge: true});
+	}
 
 	return {
 		checkoutUrl: session.url,
@@ -414,7 +576,9 @@ exports.stripeWebhook = onRequest(async (req, res) => {
 		const signature = req.headers["stripe-signature"];
 		const event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
 
-		if (event.type !== "checkout.session.completed") {
+		if (event.type !== "checkout.session.completed" &&
+			event.type !== "checkout.session.expired" &&
+			event.type !== "checkout.session.async_payment_failed") {
 			res.status(200).json({received: true, ignored: true});
 			return;
 		}
@@ -434,6 +598,26 @@ exports.stripeWebhook = onRequest(async (req, res) => {
 		const orderDoc = orderSnap.docs[0];
 		const orderRef = orderDoc.ref;
 		const order = orderDoc.data();
+
+		if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+			if (order.status === "pending") {
+				await orderRef.set({
+					status: "cancelled",
+					cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+					webhookProcessed: true,
+				}, {merge: true});
+				if (order.reservationId) {
+					await db.collection("spinReservations").doc(order.reservationId).set({
+						status: "released",
+						releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+						releaseReason: event.type,
+						updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+					}, {merge: true});
+				}
+			}
+			res.status(200).json({received: true, released: true});
+			return;
+		}
 
 		const shouldProcess = await db.runTransaction(async (tx) => {
 			const fresh = await tx.get(orderRef);
@@ -460,14 +644,35 @@ exports.stripeWebhook = onRequest(async (req, res) => {
 		const assignedNumbers = [];
 
 		if (raffle.type === "spin") {
-			const assignedSet = await getAssignedNumbersSet(order.raffleId);
-			const selected = allocateSpinNumbers({
-				totalSpots: parseIntSafe(raffle.totalSpots),
-				assignedNumbersSet: assignedSet,
-				quantity,
-				assignmentMode: raffle.assignmentMode,
-			});
-			selected.forEach((n) => assignedNumbers.push(n));
+			if (order.reservationId) {
+				const reservationRef = db.collection("spinReservations").doc(order.reservationId);
+				const reservationSnap = await reservationRef.get();
+				if (!reservationSnap.exists) {
+					throw new Error("Spin reservation not found for order " + orderRef.id);
+				}
+				const reservation = reservationSnap.data();
+				if (reservation.status === "paid") {
+					assignedNumbers.push(parseIntSafe(reservation.number));
+				} else {
+					await reservationRef.set({
+						status: "paid",
+						paidAt: admin.firestore.FieldValue.serverTimestamp(),
+						stripeSessionId: session.id,
+						orderId: orderRef.id,
+						updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+					}, {merge: true});
+					assignedNumbers.push(parseIntSafe(reservation.number));
+				}
+			} else {
+				const assignedSet = await getAssignedNumbersSet(order.raffleId);
+				const selected = allocateSpinNumbers({
+					totalSpots: parseIntSafe(raffle.totalSpots),
+					assignedNumbersSet: assignedSet,
+					quantity,
+					assignmentMode: raffle.assignmentMode,
+				});
+				selected.forEach((n) => assignedNumbers.push(n));
+			}
 		}
 
 		const createdAt = admin.firestore.FieldValue.serverTimestamp();

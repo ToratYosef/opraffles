@@ -81,6 +81,7 @@
   const spinFields = document.getElementById("spinFields");
   const entryPriceLabel = document.getElementById("entryPriceLabel");
   const entryPriceInput = document.getElementById("entryPriceInput");
+  const entryPriceWrap = document.getElementById("entryPriceWrap");
   const bannerFileInput = document.getElementById("bannerFile");
   const bannerImageInput = document.getElementById("bannerImage");
 
@@ -282,7 +283,7 @@
         maxEntries: limitModeValue === "max" ? maxEntries : null,
         packageDeals: dealTiers,
         totalSpots: Number(formData.get("totalSpots") || 0),
-        assignmentMode: String(formData.get("assignmentMode") || "next"),
+        assignmentMode: "random",
       };
 
       if (type === "spin") {
@@ -387,13 +388,22 @@
     spinFields.classList.toggle("hidden", !isSpin);
     generalOptions.classList.toggle("hidden", isSpin);
     limitMode.closest("label").classList.toggle("hidden", isSpin);
+    entryPriceWrap.classList.toggle("hidden", isSpin);
     if (isSpin) {
       limitMode.value = "unlimited";
       maxEntriesField.classList.add("hidden");
       maxEntriesField.value = "";
+      // Keep a backend-compatible default while hiding this field for spin setup UX.
+      entryPriceInput.value = entryPriceInput.value || "50";
+      entryPriceInput.required = false;
+    } else {
+      entryPriceInput.required = true;
+      if (!entryPriceInput.value || Number(entryPriceInput.value) === 50) {
+        entryPriceInput.value = "";
+      }
     }
-    entryPriceLabel.textContent = isSpin ? "Price per spot/card" : "Entry price";
-    entryPriceInput.placeholder = isSpin ? "Price per spot/card" : "Price per entry";
+    entryPriceLabel.textContent = "Entry price";
+    entryPriceInput.placeholder = "Price per entry";
   }
 
   createRaffleForm.addEventListener("change", (event) => {

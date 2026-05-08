@@ -20,6 +20,8 @@
 
   const checkoutForm = document.getElementById("checkoutForm");
   const entryQtyInput = document.getElementById("entryQty");
+  const entryQtyWrap = document.getElementById("entryQtyWrap");
+  const spinOneTicketNote = document.getElementById("spinOneTicketNote");
   const estimatedTotal = document.getElementById("estimatedTotal");
   const estimatedDiscount = document.getElementById("estimatedDiscount");
   const checkoutMessage = document.getElementById("checkoutMessage");
@@ -49,7 +51,7 @@
 
   function updateEstimate() {
     if (!raffle) return;
-    const qty = Math.max(1, Number(entryQtyInput.value || 1));
+    const qty = raffle.type === "spin" ? 1 : Math.max(1, Number(entryQtyInput.value || 1));
     entryQtyInput.value = String(qty);
 
     const unitCents = Math.round(Number(raffle.entryPrice || 0) * 100);
@@ -59,7 +61,9 @@
     const total = Math.max(subtotal - discount, 0);
 
     estimatedTotal.textContent = RafflePlatform.formatCurrency(total, "usd");
-    estimatedDiscount.textContent = deal.discountPercent > 0
+    estimatedDiscount.textContent = raffle.type === "spin"
+      ? "One spot per payment. Your number is assigned automatically after payment succeeds."
+      : deal.discountPercent > 0
       ? "Package deal applied: " + deal.discountPercent + "% off"
       : "No discount tier applied";
   }
@@ -103,6 +107,10 @@
     if (raffle.type === "spin") {
       spinInfo.classList.remove("hidden");
       spinSummary.textContent = "Numbers are assigned automatically after payment. Total spots: " + String(raffle.totalSpots || 0);
+      entryQtyWrap.classList.add("hidden");
+      spinOneTicketNote.classList.remove("hidden");
+      entryQtyInput.value = "1";
+      entryQtyInput.disabled = true;
     }
 
     if ((raffle.packageDeals || []).length) {

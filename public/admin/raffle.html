@@ -100,7 +100,7 @@
                 <option value="general">General Entry Raffle</option>
                 <option value="spin">Spin The Wheel Raffle</option>
               </select>
-              <label class="grid gap-1 text-sm">
+              <label id="entryPriceWrap" class="grid gap-1 text-sm">
                 <span id="entryPriceLabel" class="text-slate-600">Entry price</span>
                 <input id="entryPriceInput" name="entryPrice" type="number" min="0" step="0.01" placeholder="Price per entry" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </label>
@@ -131,12 +131,11 @@
               </div>
 
               <div id="spinFields" class="hidden grid gap-4 md:col-span-2 md:grid-cols-2">
-                <input name="totalSpots" type="number" min="1" step="1" placeholder="Total spots/cards (numbers 1..N)" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-                <select name="assignmentMode" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
-                  <option value="next">Assignment: Next available</option>
-                  <option value="random">Assignment: Random available</option>
-                </select>
-                <p class="md:col-span-2 text-xs text-slate-500">For spin raffles, set only: 1) max number range (1..N), 2) price per spot/card, 3) assignment mode.</p>
+                <label class="grid gap-1 text-sm">
+                  <span class="text-slate-600">One to what? (max number)</span>
+                  <input name="totalSpots" type="number" min="1" step="1" placeholder="Example: 100 means numbers 1 to 100" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+                </label>
+                <p class="md:col-span-2 text-xs text-slate-500">Spin setup only asks: one to what (max number). Assignment is always random.</p>
               </div>
 
               <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="active" checked /> Active</label>
