@@ -12,7 +12,8 @@ setGlobalOptions({maxInstances: 10, region: "us-central1"});
 const ADMIN_CODE = process.env.ADMIN_CODE || "123";
 const DEFAULT_ALLOWED_ORIGINS = ["https://opraffles1.web.app"];
 const SPIN_RESERVATION_MINUTES = Number(process.env.SPIN_RESERVATION_MINUTES || 15);
-const CALLABLE_CORS = {
+const CALLABLE_OPTS = {
+	invoker: "public",
 	cors: [
 		"https://opraffles1.web.app",
 		"https://opraffles1.firebaseapp.com",
@@ -251,7 +252,7 @@ function allocateSpinNumbers({totalSpots, assignedNumbersSet, quantity, assignme
 	return available.slice(0, quantity);
 }
 
-exports.adminCreateRaffle = onCall(CALLABLE_CORS, async (request) => {
+exports.adminCreateRaffle = onCall(CALLABLE_OPTS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const data = request.data || {};
@@ -316,7 +317,7 @@ exports.adminCreateRaffle = onCall(CALLABLE_CORS, async (request) => {
 	return {raffleId: raffleRef.id};
 });
 
-exports.adminToggleRaffle = onCall(CALLABLE_CORS, async (request) => {
+exports.adminToggleRaffle = onCall(CALLABLE_OPTS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const raffleId = String(request.data && request.data.raffleId || "").trim();
@@ -333,7 +334,7 @@ exports.adminToggleRaffle = onCall(CALLABLE_CORS, async (request) => {
 	return {success: true};
 });
 
-exports.adminGetDashboard = onCall(CALLABLE_CORS, async (request) => {
+exports.adminGetDashboard = onCall(CALLABLE_OPTS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const [rafflesSnap, ordersSnap, entriesSnap] = await Promise.all([
@@ -360,7 +361,7 @@ exports.adminGetDashboard = onCall(CALLABLE_CORS, async (request) => {
 	};
 });
 
-exports.adminGenerateWheelData = onCall(CALLABLE_CORS, async (request) => {
+exports.adminGenerateWheelData = onCall(CALLABLE_OPTS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const raffleId = String(request.data && request.data.raffleId || "").trim();
@@ -402,7 +403,7 @@ exports.adminGenerateWheelData = onCall(CALLABLE_CORS, async (request) => {
 	};
 });
 
-exports.createCheckoutSession = onCall(CALLABLE_CORS, async (request) => {
+exports.createCheckoutSession = onCall(CALLABLE_OPTS, async (request) => {
 	const data = request.data || {};
 	const raffleId = String(data.raffleId || "").trim();
 	const quantity = parseIntSafe(data.quantity);
@@ -475,7 +476,7 @@ exports.createCheckoutSession = onCall(CALLABLE_CORS, async (request) => {
 		buyerName,
 		buyerEmail,
 		buyerPhone,
-		stripeSessionId: session.id,
+		stripeSessionId: null,
 		stripePaymentIntentId: null,
 		status: "pending",
 		totalAmount: totalCents,
@@ -564,7 +565,7 @@ exports.createCheckoutSession = onCall(CALLABLE_CORS, async (request) => {
 	};
 });
 
-exports.stripeWebhook = onRequest(async (req, res) => {
+exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 	if (applyCors(req, res)) {
 		return;
 	}
@@ -721,7 +722,7 @@ exports.stripeWebhook = onRequest(async (req, res) => {
 	}
 });
 
-exports.createManualEntry = onCall(CALLABLE_CORS, async (request) => {
+exports.createManualEntry = onCall(CALLABLE_OPTS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const data = request.data || {};
@@ -803,7 +804,7 @@ exports.createManualEntry = onCall(CALLABLE_CORS, async (request) => {
 	return {orderId: orderRef.id};
 });
 
-exports.getOrderBySession = onCall(CALLABLE_CORS, async (request) => {
+exports.getOrderBySession = onCall(CALLABLE_OPTS, async (request) => {
 	const sessionId = String(request.data && request.data.sessionId || "").trim();
 	if (!sessionId) {
 		throw new HttpsError("invalid-argument", "Missing session id.");
@@ -832,7 +833,7 @@ exports.getOrderBySession = onCall(CALLABLE_CORS, async (request) => {
 	};
 });
 
-exports.exportRaffleCsv = onCall(CALLABLE_CORS, async (request) => {
+exports.exportRaffleCsv = onCall(CALLABLE_OPTS, async (request) => {
 	requireAdmin(request.data && request.data.adminCode);
 
 	const raffleId = String(request.data && request.data.raffleId || "").trim();
