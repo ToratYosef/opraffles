@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Access | OP Raffles</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Sora", "ui-sans-serif", "system-ui"],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="min-h-screen bg-stone-50 font-sans text-slate-900">
+    <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div class="absolute left-0 top-0 h-72 w-72 rounded-full bg-amber-300/35 blur-3xl"></div>
+      <div class="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-rose-300/25 blur-3xl"></div>
+    </div>
+
+    <main class="mx-auto flex min-h-screen max-w-md items-center px-4 py-10">
+      <section class="w-full rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl">
+        <a href="/index.html" class="text-sm text-amber-700">Back to site</a>
+        <h1 class="mt-4 text-3xl font-bold">Admin Access</h1>
+        <p class="mt-2 text-sm text-slate-600">Enter your admin code to open the raffle dashboard.</p>
+
+        <form id="adminCodeForm" class="mt-6 space-y-4">
+          <div>
+            <label class="mb-1 block text-xs uppercase tracking-wider text-slate-400" for="adminCode">Admin code</label>
+            <input id="adminCode" type="password" required class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-amber-400 focus:outline-none" placeholder="Enter admin code" />
+          </div>
+          <button type="submit" class="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600">Continue to Dashboard</button>
+          <p id="adminCodeMessage" class="hidden rounded-lg px-3 py-2 text-sm"></p>
+        </form>
+
+        <p class="mt-6 text-xs text-slate-500">This temporary gate can later be replaced with Firebase Authentication.</p>
+      </section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="/assets/js/firebase.js"></script>
+    <script src="/assets/js/admin.js"></script>
+  </body>
+</html>

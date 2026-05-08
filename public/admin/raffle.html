@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Raffle Dashboard | OP Raffles Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Sora", "ui-sans-serif", "system-ui"],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="min-h-screen bg-stone-50 font-sans text-slate-900">
+    <div class="grid min-h-screen lg:grid-cols-[280px_1fr]">
+      <aside class="border-r border-amber-900/20 bg-amber-900 text-amber-50">
+        <div class="px-6 py-6">
+          <p class="text-xs uppercase tracking-[0.2em] text-amber-200">Admin</p>
+          <h1 class="mt-1 text-2xl font-bold text-white">OP Raffles</h1>
+        </div>
+        <nav class="space-y-1 px-3 pb-6" id="sidebarNav">
+          <button data-section="overview" class="w-full rounded-xl bg-white/15 px-4 py-3 text-left text-sm font-semibold">Overview</button>
+          <button data-section="raffles" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Raffles</button>
+          <button data-section="orders" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Orders</button>
+          <button data-section="entries" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Entries</button>
+          <button data-section="spin" class="w-full rounded-xl px-4 py-3 text-left text-sm hover:bg-white/10">Spin Wheel</button>
+        </nav>
+        <div class="px-6 pb-6">
+          <button id="adminLogoutBtn" class="w-full rounded-xl border border-white/30 px-4 py-2 text-sm hover:bg-white/10">Sign out</button>
+        </div>
+      </aside>
+
+      <main class="p-4 sm:p-6 lg:p-8">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="sectionTitle" class="text-2xl font-bold">Overview</h2>
+            <p class="text-sm text-slate-500">Manage raffles, orders, entries, and wheel tools.</p>
+          </div>
+          <div class="flex gap-2">
+            <button id="refreshDashboardBtn" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Refresh</button>
+          </div>
+        </div>
+
+        <section id="section-overview" class="dashboard-section space-y-5">
+          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p class="text-xs uppercase tracking-wide text-slate-500">Total Raffles</p>
+              <p id="statTotalRaffles" class="mt-2 text-3xl font-bold">0</p>
+            </article>
+            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p class="text-xs uppercase tracking-wide text-slate-500">Active Raffles</p>
+              <p id="statActiveRafflesAdmin" class="mt-2 text-3xl font-bold">0</p>
+            </article>
+            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p class="text-xs uppercase tracking-wide text-slate-500">Revenue</p>
+              <p id="statRevenue" class="mt-2 text-3xl font-bold">$0.00</p>
+            </article>
+            <article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p class="text-xs uppercase tracking-wide text-slate-500">Total Entries</p>
+              <p id="statEntries" class="mt-2 text-3xl font-bold">0</p>
+            </article>
+          </div>
+
+          <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div class="mb-4 flex items-center justify-between">
+              <h3 class="text-lg font-bold">Recent Orders</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th class="px-3 py-2">Buyer</th>
+                    <th class="px-3 py-2">Raffle</th>
+                    <th class="px-3 py-2">Status</th>
+                    <th class="px-3 py-2">Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="recentOrdersTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-raffles" class="dashboard-section hidden space-y-5">
+          <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <h3 class="text-lg font-bold">Create Raffle</h3>
+            <form id="createRaffleForm" class="mt-4 grid gap-4 md:grid-cols-2">
+              <input name="name" required placeholder="Raffle name" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+              <input name="slug" required placeholder="raffle-slug" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+              <select name="type" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
+                <option value="general">General Entry Raffle</option>
+                <option value="spin">Spin The Wheel Raffle</option>
+                <option value="package">Package / Chinese Auction</option>
+              </select>
+              <input name="entryPrice" type="number" min="0" step="0.01" placeholder="Entry price" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+              <input name="bannerImage" placeholder="Banner image URL" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2" />
+              <textarea name="description" placeholder="Description" rows="3" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2"></textarea>
+              <textarea name="shortDescription" placeholder="Short homepage description" rows="2" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2"></textarea>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="active" checked /> Active</label>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="featured" /> Featured</label>
+              <button class="rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600 md:col-span-2" type="submit">Create Raffle</button>
+            </form>
+            <p id="createRaffleMessage" class="mt-3 hidden rounded-lg px-3 py-2 text-sm"></p>
+          </div>
+
+          <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <h3 class="text-lg font-bold">All Raffles</h3>
+            <div class="mt-4 overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th class="px-3 py-2">Name</th>
+                    <th class="px-3 py-2">Type</th>
+                    <th class="px-3 py-2">Active</th>
+                    <th class="px-3 py-2">Featured</th>
+                    <th class="px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="rafflesTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-orders" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <h3 class="text-lg font-bold">Orders</h3>
+          <p class="mt-1 text-sm text-slate-500">Use filters in the next iteration. This section already pulls live orders.</p>
+          <div class="mt-4 overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th class="px-3 py-2">Date</th>
+                  <th class="px-3 py-2">Buyer</th>
+                  <th class="px-3 py-2">Raffle</th>
+                  <th class="px-3 py-2">Status</th>
+                  <th class="px-3 py-2">Entries</th>
+                  <th class="px-3 py-2">Amount</th>
+                </tr>
+              </thead>
+              <tbody id="ordersTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-entries" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-bold">Entries</h3>
+            <button id="exportCsvBtn" class="rounded-xl border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">Export CSV</button>
+          </div>
+          <div class="mt-4 overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th class="px-3 py-2">Entry #</th>
+                  <th class="px-3 py-2">Buyer</th>
+                  <th class="px-3 py-2">Raffle</th>
+                  <th class="px-3 py-2">Package</th>
+                  <th class="px-3 py-2">Source</th>
+                </tr>
+              </thead>
+              <tbody id="entriesTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-spin" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 space-y-4">
+          <h3 class="text-lg font-bold">Spin Wheel Tools</h3>
+          <p class="text-sm text-slate-500">Generate name lists and open wheel tools for spin-style raffles.</p>
+          <div class="grid gap-3 md:grid-cols-3">
+            <select id="spinRaffleSelect" class="rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
+            <button id="generateWheelListBtn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Generate Name List</button>
+            <a href="/admin/wheel.html" class="rounded-xl border border-slate-300 px-4 py-2 text-center text-sm font-semibold hover:bg-slate-50">Open Internal Wheel</a>
+          </div>
+          <textarea id="wheelNameList" rows="8" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Generated names will appear here"></textarea>
+          <a id="wheelOfNamesLink" href="#" target="_blank" class="inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open WheelOfNames URL</a>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+    <script src="/assets/js/firebase.js"></script>
+    <script src="/assets/js/admin.js"></script>
+  </body>
+</html>

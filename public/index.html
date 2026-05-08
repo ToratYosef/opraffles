@@ -1,89 +1,100 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Welcome to Firebase Hosting</title>
-
-    <!-- update the version number as needed -->
-    <script defer src="/__/firebase/12.13.0/firebase-app-compat.js"></script>
-    <!-- include only the Firebase features as you need -->
-    <script defer src="/__/firebase/12.13.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-database-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-functions-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-messaging-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-storage-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-analytics-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-remote-config-compat.js"></script>
-    <script defer src="/__/firebase/12.13.0/firebase-performance-compat.js"></script>
-    <!-- 
-      initialize the SDK after all desired features are loaded, set useEmulator to false
-      to avoid connecting the SDK to running emulators.
-    -->
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-
-    <style media="screen">
-      body { background: #ECEFF1; color: rgba(0,0,0,0.87); font-family: Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-      #message { background: white; max-width: 360px; margin: 100px auto 16px; padding: 32px 24px; border-radius: 3px; }
-      #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
-      #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
-      #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
-      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
-      #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
-      #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
-      @media (max-width: 600px) {
-        body, #message { margin-top: 0; background: white; box-shadow: none; }
-        body { border-top: 16px solid #ffa100; }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="message">
-      <h2>Welcome</h2>
-      <h1>Firebase Hosting Setup Complete</h1>
-      <p>You're seeing this because you've successfully setup Firebase Hosting. Now it's time to go build something extraordinary!</p>
-      <a target="_blank" href="https://firebase.google.com/docs/hosting/">Open Hosting Documentation</a>
-    </div>
-    <p id="load">Firebase SDK Loading&hellip;</p>
-
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OP Raffles | Fundraising Raffles</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        const loadEl = document.querySelector('#load');
-        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-        // // The Firebase SDK is initialized and available here!
-        //
-        // firebase.auth().onAuthStateChanged(user => { });
-        // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
-        // firebase.firestore().doc('/foo/bar').get().then(() => { });
-        // firebase.functions().httpsCallable('yourFunction')().then(() => { });
-        // firebase.messaging().requestPermission().then(() => { });
-        // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
-        // firebase.analytics(); // call to activate
-        // firebase.analytics().logEvent('tutorial_completed');
-        // firebase.performance(); // call to activate
-        //
-        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-
-        try {
-          let app = firebase.app();
-          let features = [
-            'auth', 
-            'database', 
-            'firestore',
-            'functions',
-            'messaging', 
-            'storage', 
-            'analytics', 
-            'remoteConfig',
-            'performance',
-          ].filter(feature => typeof app[feature] === 'function');
-          loadEl.textContent = `Firebase SDK loaded with ${features.join(', ')}`;
-        } catch (e) {
-          console.error(e);
-          loadEl.textContent = 'Error loading the Firebase SDK, check the console.';
-        }
-      });
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Sora", "ui-sans-serif", "system-ui"],
+            },
+            colors: {
+              brand: {
+                50: "#fff8ed",
+                500: "#d97706",
+                600: "#b45309",
+                900: "#2b1600",
+              },
+            },
+            boxShadow: {
+              soft: "0 20px 50px -30px rgba(41, 28, 14, 0.35)",
+            },
+          },
+        },
+      };
     </script>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-slate-900">
+    <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div class="absolute -left-20 top-0 h-72 w-72 rounded-full bg-amber-300/40 blur-3xl"></div>
+      <div class="absolute right-0 top-40 h-80 w-80 rounded-full bg-orange-300/30 blur-3xl"></div>
+      <div class="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-rose-300/20 blur-3xl"></div>
+    </div>
+
+    <header class="sticky top-0 z-30 border-b border-slate-200 bg-stone-50/90 backdrop-blur">
+      <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <a href="/index.html" class="text-xl font-semibold tracking-tight text-slate-900">OP Raffles</a>
+        <button id="mobileMenuBtn" class="rounded-xl border border-slate-300 px-3 py-2 text-sm lg:hidden">Menu</button>
+        <div class="hidden items-center gap-4 lg:flex">
+          <a href="/index.html" class="text-sm font-medium text-amber-700">Home</a>
+          <div id="desktopRaffleNav" class="flex items-center gap-2"></div>
+        </div>
+      </nav>
+      <div id="mobileMenu" class="hidden border-t border-slate-200 px-4 py-3 lg:hidden">
+        <div class="space-y-2">
+          <a href="/index.html" class="block rounded-lg px-3 py-2 text-sm font-medium text-amber-700">Home</a>
+          <div id="mobileRaffleNav" class="space-y-2"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
+      <section class="grid gap-8 lg:grid-cols-2 lg:items-center">
+        <div>
+          <span class="inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-amber-800">Live Fundraisers</span>
+          <h1 id="heroTitle" class="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">Run premium raffles with confidence</h1>
+          <p id="heroSubtitle" class="mt-4 max-w-2xl text-slate-600">Support community fundraisers by entering live raffles and discovering featured prizes.</p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href="#featuredRaffles" class="rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-amber-600">Browse Active Raffles</a>
+          </div>
+        </div>
+        <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded-2xl border border-slate-200 bg-stone-50 p-4">
+              <p class="text-xs uppercase text-slate-500">Active Raffles</p>
+              <p id="statActiveRaffles" class="mt-2 text-2xl font-bold">0</p>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-stone-50 p-4">
+              <p class="text-xs uppercase text-slate-500">Featured</p>
+              <p id="statFeaturedRaffles" class="mt-2 text-2xl font-bold">0</p>
+            </div>
+          </div>
+          <p class="mt-4 text-sm text-slate-600">Join active fundraisers, support the cause, and track your entries in one place.</p>
+        </div>
+      </section>
+
+      <section id="featuredRaffles" class="mt-12">
+        <div class="mb-6 flex items-center justify-between">
+          <h2 class="text-2xl font-bold">Featured Raffles</h2>
+          <button id="refreshRafflesBtn" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm hover:bg-slate-100">Refresh</button>
+        </div>
+        <div id="rafflesLoading" class="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">Loading active raffles...</div>
+        <div id="rafflesEmpty" class="hidden rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-slate-600">No active raffles right now. Check back soon.</div>
+        <div id="rafflesGrid" class="hidden grid gap-6 sm:grid-cols-2 xl:grid-cols-3"></div>
+      </section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+    <script src="/assets/js/firebase.js"></script>
+    <script src="/assets/js/app.js"></script>
   </body>
 </html>
