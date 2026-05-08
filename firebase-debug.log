@@ -112,3 +112,5 @@
 [info] i  functions: Loading and analyzing source code for codebase default to determine what to deploy 
 [debug] [2026-05-08T18:54:56.943Z] Could not find functions.yaml. Must use http discovery
 [debug] [2026-05-08T18:54:56.952Z] Found firebase-functions binary at '/workspaces/opraffles/functions/node_modules/.bin/firebase-functions'
+[info] Serving at port 8872
+
