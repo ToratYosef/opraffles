@@ -1,6 +1,7 @@
 /* global RafflePlatform */
 (function adminController() {
-  const db = RafflePlatform.db;
+  const storage = RafflePlatform.storage;
+  const functions = RafflePlatform.functions;
   const HARDCODED_ADMIN_CODE = "123";
 
   const isAdminLanding = window.location.pathname.endsWith("/admin/") || window.location.pathname.endsWith("/admin/index.html");
@@ -74,11 +75,21 @@
 
   const createRaffleForm = document.getElementById("createRaffleForm");
   const createRaffleMessage = document.getElementById("createRaffleMessage");
+  const limitMode = document.getElementById("limitMode");
+  const maxEntriesField = document.getElementById("maxEntries");
+  const spinFields = document.getElementById("spinFields");
+  const entryPriceLabel = document.getElementById("entryPriceLabel");
+  const entryPriceInput = document.getElementById("entryPriceInput");
+  const bannerFileInput = document.getElementById("bannerFile");
+  const bannerImageInput = document.getElementById("bannerImage");
 
   const spinRaffleSelect = document.getElementById("spinRaffleSelect");
   const generateWheelListBtn = document.getElementById("generateWheelListBtn");
+  const includeManualToggle = document.getElementById("includeManualToggle");
+  const spinSpotStats = document.getElementById("spinSpotStats");
   const wheelNameList = document.getElementById("wheelNameList");
   const wheelOfNamesLink = document.getElementById("wheelOfNamesLink");
+  const openInternalWheelBtn = document.getElementById("openInternalWheelBtn");
   const exportCsvBtn = document.getElementById("exportCsvBtn");
 
   let cachedRaffles = [];
@@ -111,23 +122,68 @@
     rows.forEach((row) => target.appendChild(row));
   }
 
-  async function loadDashboard() {
-    const [rafflesSnap, ordersSnap, entriesSnap] = await Promise.all([
-      db.collection("raffles").get(),
-      db.collection("orders").orderBy("createdAt", "desc").limit(50).get(),
-      db.collection("entries").orderBy("createdAt", "desc").limit(150).get(),
-    ]);
+  function parseDealTiers(raw) {
+    if (!raw.trim()) return [];
+    const entries = raw
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [qtyRaw, pctRaw] = part.split("=").map((v) => v.trim());
+        return {
+          qty: Number(qtyRaw),
+          discountPercent: Number(pctRaw),
+        };
+      })
+      .filter((tier) => Number.isInteger(tier.qty) && tier.qty >= 2 && tier.discountPercent > 0 && tier.discountPercent < 100)
+      .sort((a, b) => a.qty - b.qty);
 
-    const raffles = rafflesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    const orders = ordersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    const entries = entriesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return entries;
+  }
+
+  function getCallable(name) {
+    if (!functions) {
+      throw new Error("Firebase Functions SDK is unavailable on this page.");
+    }
+    return functions.httpsCallable(name);
+  }
+
+  async function callAdmin(name, payload) {
+    const callable = getCallable(name);
+    const response = await callable({
+      adminCode: savedCode,
+      ...payload,
+    });
+    return response.data;
+  }
+
+  async function uploadBannerIfNeeded(slug) {
+    const file = bannerFileInput.files && bannerFileInput.files[0];
+    if (!file) return String(bannerImageInput.value || "").trim();
+    if (!storage) {
+      throw new Error("Firebase Storage is not initialized.");
+    }
+
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const safeSlug = slug.replace(/[^a-z0-9-]/g, "");
+    const path = "raffle-banners/" + safeSlug + "-" + Date.now() + "." + ext;
+    const uploadTask = storage.ref(path).put(file, { contentType: file.type || "image/jpeg" });
+    await uploadTask;
+    const url = await storage.ref(path).getDownloadURL();
+    bannerImageInput.value = url;
+    return url;
+  }
+
+  async function loadDashboard() {
+    const data = await callAdmin("adminGetDashboard", {});
+    const raffles = data.raffles || [];
+    const orders = data.orders || [];
+    const entries = data.entries || [];
 
     cachedRaffles = raffles;
     cachedEntries = entries;
 
-    const revenueCents = orders
-      .filter((order) => order.status === "paid")
-      .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+    const revenueCents = Number(data.stats && data.stats.revenueCents ? data.stats.revenueCents : 0);
 
     statTotalRaffles.textContent = String(raffles.length);
     statActiveRafflesAdmin.textContent = String(raffles.filter((r) => r.active).length);
@@ -149,11 +205,13 @@
     const raffleRows = raffles.map((raffle) => {
       const tr = document.createElement("tr");
       tr.className = "border-t border-slate-100";
+      const limitText = raffle.unlimitedEntries ? "Unlimited" : "Max " + String(raffle.maxEntries || 0);
       tr.innerHTML =
         '<td class="px-3 py-2 font-medium">' + (raffle.name || "-") + "</td>" +
         '<td class="px-3 py-2">' + (raffle.type || "-") + "</td>" +
+        '<td class="px-3 py-2">' + RafflePlatform.formatCurrency(Math.round(Number(raffle.entryPrice || 0) * 100), "usd") + "</td>" +
         '<td class="px-3 py-2">' + (raffle.active ? "Yes" : "No") + "</td>" +
-        '<td class="px-3 py-2">' + (raffle.featured ? "Yes" : "No") + "</td>" +
+        '<td class="px-3 py-2">' + limitText + "</td>" +
         '<td class="px-3 py-2"><button data-id="' + raffle.id + '" class="toggle-active rounded-lg border border-slate-300 px-2 py-1 text-xs">Toggle Active</button></td>';
       return tr;
     });
@@ -180,16 +238,20 @@
         '<td class="px-3 py-2">' + (entry.entryNumber || entry.assignedCardNumber || "-") + "</td>" +
         '<td class="px-3 py-2">' + (entry.buyerName || "-") + "</td>" +
         '<td class="px-3 py-2">' + (entry.raffleName || "-") + "</td>" +
-        '<td class="px-3 py-2">' + (entry.packageName || "-") + "</td>" +
+        '<td class="px-3 py-2">' + (entry.assignedCardNumber || "-") + "</td>" +
         '<td class="px-3 py-2">' + (entry.source || "payment") + "</td>";
       return tr;
     });
     renderRows(entriesTable, entryRows, "No entries found.");
 
     spinRaffleSelect.innerHTML = raffles
-      .filter((r) => r.type === "spin" || r.type === "general" || r.type === "package")
+      .filter((r) => r.type === "spin")
       .map((r) => '<option value="' + r.id + '">' + r.name + "</option>")
       .join("");
+
+    if (!spinRaffleSelect.innerHTML) {
+      spinRaffleSelect.innerHTML = '<option value="">No spin raffles</option>';
+    }
   }
 
   createRaffleForm.addEventListener("submit", async (event) => {
@@ -197,32 +259,51 @@
     createRaffleMessage.classList.add("hidden");
 
     const formData = new FormData(createRaffleForm);
-    const payload = {
-      name: String(formData.get("name") || "").trim(),
-      slug: String(formData.get("slug") || "").trim().toLowerCase(),
-      type: String(formData.get("type") || "general"),
-      description: String(formData.get("description") || "").trim(),
-      shortDescription: String(formData.get("shortDescription") || "").trim(),
-      bannerImage: String(formData.get("bannerImage") || "").trim(),
-      entryPrice: Number(formData.get("entryPrice") || 0),
-      active: !!formData.get("active"),
-      featured: !!formData.get("featured"),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    };
-
     try {
+      const slug = String(formData.get("slug") || "").trim().toLowerCase();
+      const type = String(formData.get("type") || "general");
+      const limitModeValue = String(formData.get("limitMode") || "unlimited");
+      const maxEntries = Number(formData.get("maxEntries") || 0);
+      const dealTiers = parseDealTiers(String(formData.get("dealTiers") || ""));
+      const bannerImageUrl = await uploadBannerIfNeeded(slug);
+
+      const payload = {
+        name: String(formData.get("name") || "").trim(),
+        slug,
+        type,
+        description: String(formData.get("description") || "").trim(),
+        shortDescription: String(formData.get("shortDescription") || "").trim(),
+        bannerImage: bannerImageUrl,
+        entryPrice: Number(formData.get("entryPrice") || 0),
+        active: !!formData.get("active"),
+        featured: !!formData.get("featured"),
+        unlimitedEntries: limitModeValue === "unlimited",
+        maxEntries: limitModeValue === "max" ? maxEntries : null,
+        packageDeals: dealTiers,
+        totalSpots: Number(formData.get("totalSpots") || 0),
+        assignmentMode: String(formData.get("assignmentMode") || "next"),
+      };
+
       if (!payload.name || !payload.slug) {
         throw new Error("Raffle name and slug are required.");
       }
 
-      const existing = await db.collection("raffles").where("slug", "==", payload.slug).limit(1).get();
-      if (!existing.empty) {
-        throw new Error("Slug already exists.");
+      if (payload.entryPrice <= 0) {
+        throw new Error("Entry price must be greater than 0.");
       }
 
-      await db.collection("raffles").add(payload);
+      if (limitModeValue === "max" && maxEntries < 1) {
+        throw new Error("Set a valid max entries value.");
+      }
+
+      if (type === "spin" && payload.totalSpots < 1) {
+        throw new Error("Spin raffles must include total spots.");
+      }
+
+      await callAdmin("adminCreateRaffle", payload);
       createRaffleForm.reset();
+      spinFields.classList.add("hidden");
+      maxEntriesField.classList.add("hidden");
       createRaffleMessage.textContent = "Raffle created successfully.";
       createRaffleMessage.className = "mt-3 rounded-lg bg-emerald-100 px-3 py-2 text-sm text-emerald-800";
       await loadDashboard();
@@ -240,43 +321,50 @@
     const raffle = cachedRaffles.find((item) => item.id === raffleId);
     if (!raffle) return;
 
-    await db.collection("raffles").doc(raffleId).update({
+    await callAdmin("adminToggleRaffle", {
+      raffleId,
       active: !raffle.active,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
     await loadDashboard();
   });
 
-  generateWheelListBtn.addEventListener("click", () => {
+  generateWheelListBtn.addEventListener("click", async () => {
     const raffleId = spinRaffleSelect.value;
-    const filtered = cachedEntries.filter((entry) => entry.raffleId === raffleId && entry.paymentStatus === "paid");
-    const names = filtered.map((entry) => entry.buyerName || "Anonymous");
+    if (!raffleId) return;
+
+    const data = await callAdmin("adminGenerateWheelData", {
+      raffleId,
+      includeManual: includeManualToggle.checked,
+    });
+
+    const names = data.names || [];
     wheelNameList.value = names.join("\n");
     const encoded = encodeURIComponent(names.join("\n"));
     wheelOfNamesLink.href = "https://wheelofnames.com/?names=" + encoded;
+    spinSpotStats.textContent =
+      "Assigned spots: " + String(data.assignedCount || 0) +
+      " | Available spots: " + String(data.availableCount || 0) +
+      " | Total spots: " + String(data.totalSpots || 0);
   });
 
   exportCsvBtn.addEventListener("click", () => {
-    const rows = ["entryNumber,buyerName,raffleName,packageName,source,paymentStatus"];
-    cachedEntries.forEach((entry) => {
-      rows.push([
-        entry.entryNumber || entry.assignedCardNumber || "",
-        (entry.buyerName || "").replaceAll(",", " "),
-        (entry.raffleName || "").replaceAll(",", " "),
-        (entry.packageName || "").replaceAll(",", " "),
-        entry.source || "payment",
-        entry.paymentStatus || "",
-      ].join(","));
+    const raffleId = spinRaffleSelect.value;
+    if (!raffleId) return;
+    callAdmin("exportRaffleCsv", { raffleId }).then((data) => {
+      const blob = new Blob([data.csv || ""], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "entries-" + raffleId + ".csv";
+      a.click();
+      URL.revokeObjectURL(url);
     });
+  });
 
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "entries-export.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  openInternalWheelBtn.addEventListener("click", () => {
+    const names = encodeURIComponent(wheelNameList.value || "");
+    window.open("/admin/wheel.html?names=" + names, "_blank");
   });
 
   sidebarNav.addEventListener("click", (event) => {
@@ -287,15 +375,41 @@
 
   refreshBtn.addEventListener("click", loadDashboard);
 
+  function syncTypeFields(typeValue) {
+    const isSpin = typeValue === "spin";
+    spinFields.classList.toggle("hidden", !isSpin);
+    entryPriceLabel.textContent = isSpin ? "Price per spot/card" : "Entry price";
+    entryPriceInput.placeholder = isSpin ? "Price per spot/card" : "Price per entry";
+  }
+
+  createRaffleForm.addEventListener("change", (event) => {
+    if (event.target.name === "type") {
+      syncTypeFields(event.target.value);
+    }
+    if (event.target.name === "limitMode") {
+      maxEntriesField.classList.toggle("hidden", event.target.value !== "max");
+    }
+  });
+
+  syncTypeFields(String(new FormData(createRaffleForm).get("type") || "general"));
+
   logoutBtn.addEventListener("click", () => {
     sessionStorage.removeItem("opraffles_admin_code");
     window.location.href = "/admin/index.html";
   });
 
   enforceAccess()
-    .then(loadDashboard)
+    .then(async () => {
+      try {
+        await loadDashboard();
+      } catch (error) {
+        console.error("Admin load failed", error);
+        sectionTitle.textContent = "Dashboard Error";
+        spinSpotStats.textContent = "Failed to load dashboard data. Deploy Functions and refresh.";
+      }
+    })
     .catch((error) => {
-      console.error("Admin load failed", error);
+      console.error("Admin access check failed", error);
       window.location.href = "/admin/index.html";
     });
 })();

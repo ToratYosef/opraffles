@@ -87,19 +87,6 @@
     });
   }
 
-  async function loadSettings() {
-    try {
-      const settingsDoc = await db.collection("settings").doc("admin").get();
-      if (!settingsDoc.exists) return;
-      const data = settingsDoc.data();
-      if (data.siteName) document.title = data.siteName + " | Fundraising Raffles";
-      if (data.homepageHeroTitle) heroTitle.textContent = data.homepageHeroTitle;
-      if (data.homepageHeroSubtitle) heroSubtitle.textContent = data.homepageHeroSubtitle;
-    } catch (error) {
-      console.error("Could not load settings", error);
-    }
-  }
-
   async function loadRaffles() {
     rafflesLoading.classList.remove("hidden");
     rafflesEmpty.classList.add("hidden");
@@ -134,6 +121,5 @@
 
   refreshBtn.addEventListener("click", loadRaffles);
 
-  loadSettings();
   loadRaffles();
 })();

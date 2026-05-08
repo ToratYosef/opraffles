@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Internal Wheel | OP Raffles Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Sora", "ui-sans-serif", "system-ui"],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="min-h-screen bg-stone-50 font-sans text-slate-900">
+    <main class="mx-auto max-w-4xl px-4 py-8">
+      <div class="mb-6 flex items-center justify-between">
+        <h1 class="text-2xl font-bold">Internal Spin Wheel</h1>
+        <a href="/admin/raffle.html" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white">Back to Dashboard</a>
+      </div>
+
+      <section class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <label class="mb-2 block text-sm font-semibold text-slate-600">Names (one per line)</label>
+        <textarea id="nameList" rows="10" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Paste names here"></textarea>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <button id="spinBtn" class="rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-600">Spin</button>
+          <button id="removeWinnerBtn" class="rounded-xl border border-slate-300 px-5 py-2 text-sm font-semibold hover:bg-slate-50">Remove Winner</button>
+          <button id="resetBtn" class="rounded-xl border border-slate-300 px-5 py-2 text-sm font-semibold hover:bg-slate-50">Reset List</button>
+        </div>
+      </section>
+
+      <section class="mt-6 grid gap-6 md:grid-cols-2">
+        <article class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <p class="text-xs uppercase tracking-wide text-slate-500">Winner</p>
+          <p id="winnerName" class="mt-3 text-3xl font-extrabold text-amber-700">-</p>
+          <p id="remainingCount" class="mt-2 text-sm text-slate-500">Remaining entries: 0</p>
+        </article>
+        <article class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <p class="text-xs uppercase tracking-wide text-slate-500">Recent Winners</p>
+          <ul id="winnerHistory" class="mt-3 space-y-2 text-sm"></ul>
+        </article>
+      </section>
+    </main>
+
+    <script src="/assets/js/wheel.js"></script>
+  </body>
+</html>

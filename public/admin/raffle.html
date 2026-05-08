@@ -99,12 +99,44 @@
               <select name="type" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
                 <option value="general">General Entry Raffle</option>
                 <option value="spin">Spin The Wheel Raffle</option>
-                <option value="package">Package / Chinese Auction</option>
               </select>
-              <input name="entryPrice" type="number" min="0" step="0.01" placeholder="Entry price" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-              <input name="bannerImage" placeholder="Banner image URL" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2" />
+              <label class="grid gap-1 text-sm">
+                <span id="entryPriceLabel" class="text-slate-600">Entry price</span>
+                <input id="entryPriceInput" name="entryPrice" type="number" min="0" step="0.01" placeholder="Price per entry" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+              </label>
+
+              <label class="grid gap-2 rounded-xl border border-slate-200 p-3 text-sm md:col-span-2">
+                <span class="font-semibold text-slate-700">Banner image upload</span>
+                <input id="bannerFile" type="file" accept="image/*" class="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <input id="bannerImage" name="bannerImage" placeholder="Or paste image URL" class="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+
               <textarea name="description" placeholder="Description" rows="3" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2"></textarea>
               <textarea name="shortDescription" placeholder="Short homepage description" rows="2" class="rounded-xl border border-slate-300 px-4 py-3 text-sm md:col-span-2"></textarea>
+
+              <label class="grid gap-1 text-sm">
+                <span class="text-slate-600">Entry limit mode</span>
+                <select name="limitMode" id="limitMode" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
+                  <option value="unlimited">Unlimited entries</option>
+                  <option value="max">Maximum entries</option>
+                </select>
+              </label>
+              <input name="maxEntries" id="maxEntries" type="number" min="1" step="1" placeholder="Max entries (required for max mode)" class="hidden rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+
+              <label class="grid gap-1 text-sm md:col-span-2">
+                <span class="text-slate-600">Package deal tiers (qty=discount%)</span>
+                <input name="dealTiers" placeholder="2=10,3=15,4=20" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+              </label>
+
+              <div id="spinFields" class="hidden grid gap-4 md:col-span-2 md:grid-cols-2">
+                <input name="totalSpots" type="number" min="1" step="1" placeholder="Total spots/cards (numbers 1..N)" class="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+                <select name="assignmentMode" class="rounded-xl border border-slate-300 px-4 py-3 text-sm">
+                  <option value="next">Assignment: Next available</option>
+                  <option value="random">Assignment: Random available</option>
+                </select>
+                <p class="md:col-span-2 text-xs text-slate-500">For spin raffles, set 1) total spots/cards (1..N), 2) price per spot/card, and 3) assignment mode.</p>
+              </div>
+
               <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="active" checked /> Active</label>
               <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="featured" /> Featured</label>
               <button class="rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600 md:col-span-2" type="submit">Create Raffle</button>
@@ -120,8 +152,9 @@
                   <tr>
                     <th class="px-3 py-2">Name</th>
                     <th class="px-3 py-2">Type</th>
+                    <th class="px-3 py-2">Entry Price</th>
                     <th class="px-3 py-2">Active</th>
-                    <th class="px-3 py-2">Featured</th>
+                    <th class="px-3 py-2">Limit</th>
                     <th class="px-3 py-2">Actions</th>
                   </tr>
                 </thead>
@@ -163,7 +196,7 @@
                   <th class="px-3 py-2">Entry #</th>
                   <th class="px-3 py-2">Buyer</th>
                   <th class="px-3 py-2">Raffle</th>
-                  <th class="px-3 py-2">Package</th>
+                  <th class="px-3 py-2">Assigned Spot</th>
                   <th class="px-3 py-2">Source</th>
                 </tr>
               </thead>
@@ -174,21 +207,27 @@
 
         <section id="section-spin" class="dashboard-section hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 space-y-4">
           <h3 class="text-lg font-bold">Spin Wheel Tools</h3>
-          <p class="text-sm text-slate-500">Generate name lists and open wheel tools for spin-style raffles.</p>
+          <p class="text-sm text-slate-500">Generate wheel names from paid entries and review assigned spot numbers.</p>
           <div class="grid gap-3 md:grid-cols-3">
             <select id="spinRaffleSelect" class="rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
+            <label class="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm"><input id="includeManualToggle" type="checkbox" /> Include manual entries</label>
             <button id="generateWheelListBtn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Generate Name List</button>
-            <a href="/admin/wheel.html" class="rounded-xl border border-slate-300 px-4 py-2 text-center text-sm font-semibold hover:bg-slate-50">Open Internal Wheel</a>
           </div>
+          <div id="spinSpotStats" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">Select a raffle and generate to see spot stats.</div>
           <textarea id="wheelNameList" rows="8" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Generated names will appear here"></textarea>
-          <a id="wheelOfNamesLink" href="#" target="_blank" class="inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open WheelOfNames URL</a>
+          <div class="flex flex-wrap gap-3">
+            <a id="wheelOfNamesLink" href="#" target="_blank" class="inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open WheelOfNames URL</a>
+            <button id="openInternalWheelBtn" type="button" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50">Open Internal Wheel</button>
+          </div>
         </section>
       </main>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+    <script src="/__/firebase/init.js"></script>
     <script src="/assets/js/firebase.js"></script>
     <script src="/assets/js/admin.js"></script>
   </body>
