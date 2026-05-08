@@ -26,11 +26,17 @@
   const estimatedDiscount = document.getElementById("estimatedDiscount");
   const checkoutMessage = document.getElementById("checkoutMessage");
   const checkoutBtn = document.getElementById("checkoutBtn");
+  const cardElementWrap = document.getElementById("cardElementWrap");
+  const spinRevealModal = document.getElementById("spinRevealModal");
+  const spinModalStatus = document.getElementById("spinModalStatus");
+  const spinRevealNumber = document.getElementById("spinRevealNumber");
 
   const params = new URLSearchParams(window.location.search);
   const slug = String(params.get("slug") || "").trim().toLowerCase();
 
   let raffle = null;
+  let stripe = null;
+  let cardElement = null;
 
   function typeLabel(type) {
     if (type === "spin") return "Spin The Wheel";
@@ -75,6 +81,69 @@
       : "rounded-lg bg-emerald-100 px-3 py-2 text-sm text-emerald-800";
   }
 
+  async function initializeCardElementForSpin() {
+    if (!window.Stripe) {
+      throw new Error("Stripe.js failed to load.");
+    }
+
+    const config = await functions.httpsCallable("getPublicConfig")({});
+    const key = config.data && config.data.stripePublishableKey;
+    if (!key) {
+      throw new Error("Missing Stripe publishable key.");
+    }
+
+    stripe = window.Stripe(key);
+    const elements = stripe.elements();
+    cardElement = elements.create("card", {
+      hidePostalCode: true,
+      style: {
+        base: {
+          fontSize: "16px",
+          color: "#0f172a",
+          fontFamily: "Sora, system-ui, sans-serif",
+          "::placeholder": { color: "#94a3b8" },
+        },
+      },
+    });
+    cardElement.mount("#cardElement");
+    cardElementWrap.classList.remove("hidden");
+  }
+
+  async function revealSpinAndRedirect(orderId, finalNumber) {
+    spinModalStatus.textContent = "Payment successful";
+    spinRevealModal.classList.remove("hidden");
+    spinRevealModal.classList.add("flex");
+
+    let ticks = 0;
+    await new Promise((resolve) => {
+      const timer = setInterval(() => {
+        spinRevealNumber.textContent = String(Math.floor(Math.random() * 99) + 1);
+        ticks += 1;
+        if (ticks > 20) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 95);
+    });
+
+    spinRevealNumber.textContent = String(finalNumber);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    window.location.href = "/success.html?order_id=" + encodeURIComponent(orderId);
+  }
+
+  async function waitForPaidOrder(orderId) {
+    const callable = functions.httpsCallable("getOrderStatus");
+    for (let i = 0; i < 20; i += 1) {
+      const result = await callable({ orderId });
+      const order = result.data && result.data.order;
+      if (order && order.status === "paid") {
+        return order;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+    throw new Error("Payment was captured but confirmation is still processing. Please refresh shortly.");
+  }
+
   async function loadRaffle() {
     if (!slug) {
       raffleLoading.classList.add("hidden");
@@ -111,6 +180,7 @@
       spinOneTicketNote.classList.remove("hidden");
       entryQtyInput.value = "1";
       entryQtyInput.disabled = true;
+      await initializeCardElementForSpin();
     }
 
     if ((raffle.packageDeals || []).length) {
@@ -128,19 +198,77 @@
     checkoutMessage.classList.add("hidden");
 
     if (!raffle) return;
-    const qty = Math.max(1, Number(entryQtyInput.value || 1));
+    const qty = raffle.type === "spin" ? 1 : Math.max(1, Number(entryQtyInput.value || 1));
+    const buyerName = document.getElementById("buyerName").value.trim();
+    const buyerEmail = document.getElementById("buyerEmail").value.trim();
+    const buyerPhone = document.getElementById("buyerPhone").value.trim();
 
     checkoutBtn.disabled = true;
-    checkoutBtn.textContent = "Preparing checkout...";
+    checkoutBtn.textContent = "Processing...";
 
     try {
+      if (raffle.type === "spin") {
+        if (!stripe || !cardElement) {
+          throw new Error("Card form is not ready. Please reload and try again.");
+        }
+
+        setMessage("Reserving your number...", "success");
+        checkoutMessage.classList.remove("hidden");
+
+        const startIntent = await functions.httpsCallable("createSpinPaymentIntent")({
+          raffleId: raffle.id,
+          buyerName,
+          buyerEmail,
+          buyerPhone,
+        });
+
+        const data = startIntent.data || {};
+        if (!data.clientSecret || !data.orderId) {
+          throw new Error("Unable to start payment.");
+        }
+
+        const confirmation = await stripe.confirmCardPayment(data.clientSecret, {
+          payment_method: {
+            card: cardElement,
+            billing_details: {
+              name: buyerName,
+              email: buyerEmail,
+              phone: buyerPhone,
+            },
+          },
+        });
+
+        if (confirmation.error) {
+          await functions.httpsCallable("releaseSpinReservation")({
+            orderId: data.orderId,
+            reason: "payment_declined",
+          });
+          setMessage("Payment declined. Your payment did not go through. Please try again.", "error");
+          checkoutMessage.classList.remove("hidden");
+          checkoutBtn.disabled = false;
+          checkoutBtn.textContent = "Pay Now";
+          return;
+        }
+
+        setMessage("Payment successful. Revealing your number...", "success");
+        checkoutMessage.classList.remove("hidden");
+
+        const paidOrder = await waitForPaidOrder(data.orderId);
+        const number = Array.isArray(paidOrder.assignedNumbers) ? paidOrder.assignedNumbers[0] : null;
+        if (!number) {
+          throw new Error("Payment completed, but number is not ready yet. Please refresh shortly.");
+        }
+        await revealSpinAndRedirect(data.orderId, number);
+        return;
+      }
+
       const callable = functions.httpsCallable("createCheckoutSession");
       const result = await callable({
         raffleId: raffle.id,
         quantity: qty,
-        buyerName: document.getElementById("buyerName").value.trim(),
-        buyerEmail: document.getElementById("buyerEmail").value.trim(),
-        buyerPhone: document.getElementById("buyerPhone").value.trim(),
+        buyerName,
+        buyerEmail,
+        buyerPhone,
       });
 
       const data = result.data || {};
@@ -153,7 +281,7 @@
       setMessage(error.message || "Could not start checkout.", "error");
       checkoutMessage.classList.remove("hidden");
       checkoutBtn.disabled = false;
-      checkoutBtn.textContent = "Continue to Secure Checkout";
+      checkoutBtn.textContent = "Pay Now";
     }
   });
 

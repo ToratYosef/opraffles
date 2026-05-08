@@ -61,6 +61,14 @@ function getStripeClient() {
 	return new Stripe(stripeSecret, {apiVersion: "2024-06-20"});
 }
 
+function getStripePublishableKey() {
+	const key = process.env.STRIPE_PUBLISHABLE_KEY;
+	if (!key) {
+		throw new HttpsError("failed-precondition", "Missing STRIPE_PUBLISHABLE_KEY environment variable.");
+	}
+	return key;
+}
+
 function normalizeSlug(value) {
 	return String(value || "")
 			.trim()
@@ -565,6 +573,179 @@ exports.createCheckoutSession = onCall(CALLABLE_OPTS, async (request) => {
 	};
 });
 
+exports.getPublicConfig = onCall(CALLABLE_OPTS, async () => {
+	return {
+		stripePublishableKey: getStripePublishableKey(),
+	};
+});
+
+exports.createSpinPaymentIntent = onCall(CALLABLE_OPTS, async (request) => {
+	const data = request.data || {};
+	const raffleId = String(data.raffleId || "").trim();
+	const buyerName = String(data.buyerName || "").trim();
+	const buyerEmail = String(data.buyerEmail || "").trim();
+	const buyerPhone = String(data.buyerPhone || "").trim();
+
+	if (!raffleId || !buyerName || !buyerEmail) {
+		throw new HttpsError("invalid-argument", "Missing spin payment data.");
+	}
+
+	const raffleSnap = await db.collection("raffles").doc(raffleId).get();
+	if (!raffleSnap.exists) {
+		throw new HttpsError("not-found", "Raffle not found.");
+	}
+	const raffle = raffleSnap.data();
+	if (raffle.type !== "spin") {
+		throw new HttpsError("failed-precondition", "This function is for spin raffles only.");
+	}
+	if (!raffle.active) {
+		throw new HttpsError("failed-precondition", "Raffle is not active.");
+	}
+
+	const stripe = getStripeClient();
+	const amountCents = Math.round(parseFloatSafe(raffle.entryPrice) * 100);
+	if (amountCents <= 0) {
+		throw new HttpsError("failed-precondition", "Spin raffle price must be greater than zero.");
+	}
+
+	const orderRef = db.collection("orders").doc();
+	const reservation = await reserveRandomSpinNumber({
+		raffleId,
+		totalSpots: parseIntSafe(raffle.totalSpots),
+		sessionToken: orderRef.id,
+		buyerName,
+		buyerEmail,
+		buyerPhone,
+	});
+
+	let paymentIntent;
+	try {
+		paymentIntent = await stripe.paymentIntents.create({
+			amount: amountCents,
+			currency: "usd",
+			automatic_payment_methods: {enabled: true},
+			receipt_email: buyerEmail,
+			metadata: {
+				raffleId,
+				raffleType: "spin",
+				orderId: orderRef.id,
+				reservationId: reservation.reservationId,
+				buyerName,
+				buyerEmail,
+				buyerPhone,
+			},
+		});
+	} catch (error) {
+		await db.collection("spinReservations").doc(reservation.reservationId).set({
+			status: "released",
+			releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+			releaseReason: "payment_intent_create_failed",
+			updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		}, {merge: true});
+		throw error;
+	}
+
+	await orderRef.set({
+		raffleId,
+		raffleSlug: raffle.slug,
+		raffleName: raffle.name,
+		buyerName,
+		buyerEmail,
+		buyerPhone,
+		stripeSessionId: null,
+		stripePaymentIntentId: paymentIntent.id,
+		status: "pending",
+		totalAmount: amountCents,
+		currency: "usd",
+		raffleType: "spin",
+		selections: {
+			quantity: 1,
+			discountPercent: 0,
+		},
+		entryCount: 1,
+		reservationId: reservation.reservationId,
+		reservedNumber: reservation.reservedNumber,
+		reservationExpiresAt: reservation.expiresAt,
+		assignedNumbers: [],
+		createdAt: admin.firestore.FieldValue.serverTimestamp(),
+		updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		paidAt: null,
+		webhookProcessed: false,
+	});
+
+	await db.collection("spinReservations").doc(reservation.reservationId).set({
+		stripePaymentIntentId: paymentIntent.id,
+		orderId: orderRef.id,
+		updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+	}, {merge: true});
+
+	return {
+		clientSecret: paymentIntent.client_secret,
+		orderId: orderRef.id,
+		expiresAt: reservation.expiresAt,
+	};
+});
+
+exports.releaseSpinReservation = onCall(CALLABLE_OPTS, async (request) => {
+	const orderId = String(request.data && request.data.orderId || "").trim();
+	const reason = String(request.data && request.data.reason || "client_release").trim();
+	if (!orderId) {
+		throw new HttpsError("invalid-argument", "Missing orderId.");
+	}
+
+	const orderRef = db.collection("orders").doc(orderId);
+	const orderSnap = await orderRef.get();
+	if (!orderSnap.exists) {
+		return {released: false, reason: "order_not_found"};
+	}
+	const order = orderSnap.data();
+	if (order.status !== "pending") {
+		return {released: false, reason: "order_not_pending"};
+	}
+
+	if (order.reservationId) {
+		await db.collection("spinReservations").doc(order.reservationId).set({
+			status: "released",
+			releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+			releaseReason: reason,
+			updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+		}, {merge: true});
+	}
+
+	await orderRef.set({
+		status: "cancelled",
+		cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+		updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+	}, {merge: true});
+
+	return {released: true};
+});
+
+exports.getOrderStatus = onCall(CALLABLE_OPTS, async (request) => {
+	const orderId = String(request.data && request.data.orderId || "").trim();
+	if (!orderId) {
+		throw new HttpsError("invalid-argument", "Missing orderId.");
+	}
+
+	const orderSnap = await db.collection("orders").doc(orderId).get();
+	if (!orderSnap.exists) {
+		throw new HttpsError("not-found", "Order not found.");
+	}
+	const order = orderSnap.data();
+	return {
+		order: {
+			id: orderId,
+			status: order.status || "pending",
+			raffleType: order.raffleType || "general",
+			raffleName: order.raffleName || "",
+			entryCount: order.entryCount || 0,
+			totalAmount: order.totalAmount || 0,
+			currency: order.currency || "usd",
+			assignedNumbers: Array.isArray(order.assignedNumbers) ? order.assignedNumbers : [],
+		},
+	};
+});
+
 exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 	if (applyCors(req, res)) {
 		return;
@@ -587,19 +768,30 @@ exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 
 		if (event.type !== "checkout.session.completed" &&
 			event.type !== "checkout.session.expired" &&
-			event.type !== "checkout.session.async_payment_failed") {
+			event.type !== "checkout.session.async_payment_failed" &&
+			event.type !== "payment_intent.succeeded" &&
+			event.type !== "payment_intent.payment_failed" &&
+			event.type !== "payment_intent.canceled") {
 			res.status(200).json({received: true, ignored: true});
 			return;
 		}
 
-		const session = event.data.object;
-		const orderSnap = await db.collection("orders")
-				.where("stripeSessionId", "==", session.id)
-				.limit(1)
-				.get();
+		const payload = event.data.object;
+		let orderSnap;
+		if (event.type.startsWith("payment_intent.")) {
+			orderSnap = await db.collection("orders")
+					.where("stripePaymentIntentId", "==", payload.id)
+					.limit(1)
+					.get();
+		} else {
+			orderSnap = await db.collection("orders")
+					.where("stripeSessionId", "==", payload.id)
+					.limit(1)
+					.get();
+		}
 
 		if (orderSnap.empty) {
-			logger.error("Order not found for Stripe session", {sessionId: session.id});
+			logger.error("Order not found for Stripe event", {eventType: event.type, objectId: payload.id});
 			res.status(200).json({received: true, orderFound: false});
 			return;
 		}
@@ -608,7 +800,10 @@ exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 		const orderRef = orderDoc.ref;
 		const order = orderDoc.data();
 
-		if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+		if (event.type === "checkout.session.expired" ||
+			event.type === "checkout.session.async_payment_failed" ||
+			event.type === "payment_intent.payment_failed" ||
+			event.type === "payment_intent.canceled") {
 			if (order.status === "pending") {
 				await orderRef.set({
 					status: "cancelled",
@@ -635,7 +830,7 @@ exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 			if (current.webhookProcessed) return false;
 			tx.update(orderRef, {
 				status: "paid",
-				stripePaymentIntentId: session.payment_intent || null,
+				stripePaymentIntentId: event.type === "payment_intent.succeeded" ? payload.id : (payload.payment_intent || null),
 				paidAt: admin.firestore.FieldValue.serverTimestamp(),
 				webhookProcessed: true,
 			});
@@ -666,7 +861,8 @@ exports.stripeWebhook = onRequest({invoker: "public"}, async (req, res) => {
 					await reservationRef.set({
 						status: "paid",
 						paidAt: admin.firestore.FieldValue.serverTimestamp(),
-						stripeSessionId: session.id,
+						stripeSessionId: order.stripeSessionId || null,
+						stripePaymentIntentId: order.stripePaymentIntentId || (event.type === "payment_intent.succeeded" ? payload.id : null),
 						orderId: orderRef.id,
 						updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 					}, {merge: true});

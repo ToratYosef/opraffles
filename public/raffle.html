@@ -98,13 +98,29 @@
               <p id="estimatedDiscount" class="mt-1 text-xs text-slate-500"></p>
             </div>
 
-            <button id="checkoutBtn" type="submit" class="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600">Continue to Secure Checkout</button>
+            <div id="cardElementWrap" class="hidden rounded-xl border border-slate-300 bg-white p-3">
+              <label class="mb-2 block text-xs uppercase tracking-wide text-slate-500">Card details</label>
+              <div id="cardElement" class="rounded-lg border border-slate-300 px-3 py-3"></div>
+            </div>
+
+            <button id="checkoutBtn" type="submit" class="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600">Pay Now</button>
             <p id="checkoutMessage" class="hidden rounded-lg px-3 py-2 text-sm"></p>
           </form>
         </aside>
       </section>
     </main>
 
+    <div id="spinRevealModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/70 p-4">
+      <div class="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
+        <p id="spinModalStatus" class="text-sm font-semibold text-emerald-700">Payment successful</p>
+        <h3 class="mt-1 text-2xl font-bold">Revealing your number...</h3>
+        <div class="mx-auto mt-6 flex h-44 w-44 items-center justify-center rounded-full border-8 border-amber-200 bg-amber-50">
+          <span id="spinRevealNumber" class="text-6xl font-extrabold text-red-600">0</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://js.stripe.com/v3/"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>

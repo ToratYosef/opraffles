@@ -18,6 +18,7 @@
 
   const params = new URLSearchParams(window.location.search);
   const sessionId = String(params.get("session_id") || "").trim();
+  const orderId = String(params.get("order_id") || "").trim();
 
   function showError(message) {
     successLoading.classList.add("hidden");
@@ -26,10 +27,16 @@
   }
 
   async function waitForPaidOrder() {
-    const callable = functions.httpsCallable("getOrderBySession");
+    const bySession = functions.httpsCallable("getOrderBySession");
+    const byOrder = functions.httpsCallable("getOrderStatus");
 
     for (let i = 0; i < 12; i += 1) {
-      const result = await callable({ sessionId });
+      let result;
+      if (orderId) {
+        result = await byOrder({ orderId });
+      } else {
+        result = await bySession({ sessionId });
+      }
       const order = result.data && result.data.order;
       if (order && order.status === "paid") {
         return order;
@@ -69,8 +76,8 @@
   }
 
   async function init() {
-    if (!sessionId) {
-      showError("Missing session id in URL.");
+    if (!sessionId && !orderId) {
+      showError("Missing payment reference in URL.");
       return;
     }
 
